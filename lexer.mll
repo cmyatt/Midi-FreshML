@@ -23,49 +23,6 @@
     let tbl = Hashtbl.create size in
     List.iter (fun (key, value) -> Hashtbl.add tbl key value) data; tbl;;
 
-  (*type token =
-    | NAME
-    | TYPE
-    | WHERE
-    | IF
-    | THEN
-    | ELSE
-    | MATCH
-    | WITH
-    | LET
-    | REC
-    | FUN
-    | IN
-    | FRESH
-    | SWAP
-    | INT_T
-    | REAL_T
-    | BOOL_T
-    | STRING_T
-    | UNIT_T
-    | L_PAREN
-    | R_PAREN
-    | DONT_CARE (* _ *)
-    | NEG       (* ~ *)
-    | EQUAL     (* = *)
-    | LT        (* < *)
-    | GT        (* > *)
-    | COMMA     (* , *)
-    | DBL_LT    (* << *)
-    | DBL_GT    (* >> *)
-    | UNIT      (* () *)
-    | ARROW     (* -> *)
-    | BAR       (* | *)
-    | COLON
-    | SEMI      (* ; *)
-    | DBL_SEMI  (* ;; *)
-    | OP of char
-    | ID of string
-    | INT of int
-    | REAL of float
-    | STRING of string
-    | BOOL of bool;;*)
-
   let keyword_tbl =
     create_hashtable 18 [
       ("name", NAME);
@@ -113,13 +70,13 @@ rule scan = parse
   | "true"
   | "false" as b { printf "BOOL (%s)\n" b; BOOL (bool_of_string b) }
   | '_' { printf "DONT_CARE\n"; DONT_CARE }
-  | '+' { printf "PLUS\n"; PLUS }
-  | '-' { printf "MINUS\n"; MINUS }
+  | '+' { printf "BIN_OP (+)\n"; BIN_OP(AbSyn.Add) }
+  | '-' { printf "BIN_OP (-)\n"; BIN_OP(AbSyn.Sub) }
   | '*' { printf "STAR\n"; STAR }
-  | '/' { printf "DIV\n"; DIV }
+  | '/' { printf "BIN_OP (/)\n"; BIN_OP(AbSyn.Div) }
   | '('  { printf "L_PAREN\n"; L_PAREN }
   | ')'  { printf "R_PAREN\n"; R_PAREN }
-  | '~'  { printf "NEG\n"; NEG }
+  | '~'  { printf "UN_OP (~)\n"; UN_OP(AbSyn.Neg) }
   | '='  { printf "EQUAL\n"; EQUAL }
   | ','  { printf "COMMA\n"; COMMA }
   | "()" { printf "UNIT\n"; UNIT }
