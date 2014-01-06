@@ -1,6 +1,6 @@
-(* Header *)
 {
-  open Printf;;
+  open Printf
+  open Parser;;
 
   exception Lexer_error of string;;
 
@@ -23,7 +23,7 @@
     let tbl = Hashtbl.create size in
     List.iter (fun (key, value) -> Hashtbl.add tbl key value) data; tbl;;
 
-  type token =
+  (*type token =
     | NAME
     | TYPE
     | WHERE
@@ -38,8 +38,14 @@
     | IN
     | FRESH
     | SWAP
+    | INT_T
+    | REAL_T
+    | BOOL_T
+    | STRING_T
+    | UNIT_T
     | L_PAREN
     | R_PAREN
+    | DONT_CARE (* _ *)
     | NEG       (* ~ *)
     | EQUAL     (* = *)
     | LT        (* < *)
@@ -58,10 +64,10 @@
     | INT of int
     | REAL of float
     | STRING of string
-    | BOOL of bool;;
+    | BOOL of bool;;*)
 
   let keyword_tbl =
-    create_hashtable 14 [
+    create_hashtable 18 [
       ("name", NAME);
       ("type", TYPE);
       ("where", WHERE);
@@ -71,11 +77,15 @@
       ("match", MATCH);
       ("with", WITH);
       ("let", LET);
-      ("rec", REC);
       ("fun", FUN);
       ("in", IN);
       ("fresh", FRESH);
-      ("swap", SWAP)
+      ("swap", SWAP);
+      ("int", INT_T);
+      ("real", REAL_T);
+      ("bool", BOOL_T);
+      ("string", STRING_T);
+      ("unit", UNIT_T)
     ];;
 
   let cur_str = ref "";;
@@ -102,10 +112,11 @@ rule scan = parse
   | '\"' { cur_str := ""; str_literal lexbuf }
   | "true"
   | "false" as b { printf "BOOL (%s)\n" b; BOOL (bool_of_string b) }
-  | '+'
-  | '-'
-  | '*'
-  | '/' as op { printf "OP (%c)\n" op; OP op }
+  | '_' { printf "DONT_CARE\n"; DONT_CARE }
+  | '+' { printf "PLUS\n"; PLUS }
+  | '-' { printf "MINUS\n"; MINUS }
+  | '*' { printf "STAR\n"; STAR }
+  | '/' { printf "DIV\n"; DIV }
   | '('  { printf "L_PAREN\n"; L_PAREN }
   | ')'  { printf "R_PAREN\n"; R_PAREN }
   | '~'  { printf "NEG\n"; NEG }
@@ -139,7 +150,6 @@ and str_literal = parse
   | _ as c { cur_str := (!cur_str ^ (Char.escaped c)); str_literal lexbuf }
   | eof { raise (Lexer_error "String literal not closed") }
 
-(* Trailer *)
 {
   let rec parse lexbuf =
     let _ = scan lexbuf in (* do something *) parse lexbuf;;
