@@ -6,6 +6,12 @@ let rec print_prog es =
       Printf.printf "%s [line %d, col %d]\n" (AbSyn.string_of_expr e) line col;
       (print_prog es);;
 
+let print_types ts =
+  print_string "Types:\n";
+  Hashtbl.iter
+    (fun k v -> Printf.printf "%s : %s\n" k (AbSyn.string_of_typ v)) ts;
+  print_string "\n";;
+
 let main () =
   try
     let cin =
@@ -15,11 +21,11 @@ let main () =
     in
     let lexbuf = Lexing.from_channel cin in
     while true do
-      let xs, (e, p)::es = Parser.program Lexer.scan lexbuf in
-      TyCheck.init xs;
+      let types, (e, p)::es = Parser.program Lexer.scan lexbuf in
       (try
+        print_types types;
         print_string ((AbSyn.string_of_expr e)^" : ");
-        print_string ((AbSyn.string_of_typ (TyCheck.get_type [] [] (e,p))^"\n"))
+        print_string ((AbSyn.string_of_typ (TyCheck.get_type types [] (e,p))^"\n"))
       with
       | TyCheck.Type_error(s) -> print_string (s^"\n"));
       (print_prog es)

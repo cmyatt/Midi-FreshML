@@ -23,6 +23,8 @@
     let tbl = Hashtbl.create size in
     List.iter (fun (key, value) -> Hashtbl.add tbl key value) data; tbl;;
 
+  let debug = false;;
+
   let keyword_tbl =
     create_hashtable 18 [
       ("name", NAME);
@@ -55,40 +57,40 @@ let id = ['a'-'z' 'A'-'Z'] ['a'-'z' 'A'-'Z' '0'-'9' '_' '\'']*
 (* Rules *)
 rule scan = parse
   | digit+ as inum {
-      let n = int_of_string inum in printf "INT (%d)\n" n;
+      let n = int_of_string inum in if debug then printf "INT (%d)\n" n else ();
       INT n
     }
   | digit+ '.' digit* as rnum {
-      let n = float_of_string rnum in printf "REAL (%f)\n" n;
+      let n = float_of_string rnum in if debug then printf "REAL (%f)\n" n else ();
       REAL n
     }
   | id as word {
-      try let kw = Hashtbl.find keyword_tbl word in printf "%s\n" word; kw with
-      | Not_found -> printf "ID (%s)\n" word; ID word
+      try let kw = Hashtbl.find keyword_tbl word in if debug then printf "%s\n" word else (); kw with
+      | Not_found -> if debug then printf "ID (%s)\n" word else (); ID word
     }
   | '\"' { cur_str := ""; str_literal lexbuf }
   | "true"
-  | "false" as b { printf "BOOL (%s)\n" b; BOOL (bool_of_string b) }
-  | '_' { printf "DONT_CARE\n"; DONT_CARE }
-  | '+' { printf "BIN_OP (+)\n"; BIN_OP(AbSyn.Add) }
-  | '-' { printf "BIN_OP (-)\n"; BIN_OP(AbSyn.Sub) }
-  | '*' { printf "STAR\n"; STAR }
-  | '/' { printf "BIN_OP (/)\n"; BIN_OP(AbSyn.Div) }
-  | '('  { printf "L_PAREN\n"; L_PAREN }
-  | ')'  { printf "R_PAREN\n"; R_PAREN }
-  | '~'  { printf "UN_OP (~)\n"; UN_OP(AbSyn.Neg) }
-  | '='  { printf "EQUAL\n"; EQUAL }
-  | ','  { printf "COMMA\n"; COMMA }
-  | "()" { printf "UNIT\n"; UNIT }
-  | "->" { printf "ARROW\n"; ARROW }
-  | '|'  { printf "BAR\n"; BAR }
-  | ':'  { printf "COLON\n"; COLON }
-  | ";;" { printf "DBL_SEMI\n"; DBL_SEMI }
-  | ';'  { printf "SEMI\n"; SEMI }
-  | "<<" { printf "DBL_LT\n"; DBL_LT }
-  | ">>" { printf "DBL_GT\n"; DBL_GT }
-  | '<'  { printf "LT\n"; LT }
-  | '>'  { printf "GT\n"; GT }
+  | "false" as b { if debug then printf "BOOL (%s)\n" b else (); BOOL (bool_of_string b) }
+  | '_' { if debug then printf "DONT_CARE\n" else (); DONT_CARE }
+  | '+' { if debug then printf "BIN_OP (+)\n" else (); BIN_OP(AbSyn.Add) }
+  | '-' { if debug then printf "BIN_OP (-)\n" else (); BIN_OP(AbSyn.Sub) }
+  | '*' { if debug then printf "STAR\n" else (); STAR }
+  | '/' { if debug then printf "BIN_OP (/)\n" else (); BIN_OP(AbSyn.Div) }
+  | '('  { if debug then printf "L_PAREN\n" else (); L_PAREN }
+  | ')'  { if debug then printf "R_PAREN\n" else (); R_PAREN }
+  | '~'  { if debug then printf "UN_OP (~)\n" else (); UN_OP(AbSyn.Neg) }
+  | '='  { if debug then printf "EQUAL\n" else (); EQUAL }
+  | ','  { if debug then printf "COMMA\n" else (); COMMA }
+  | "()" { if debug then printf "UNIT\n" else (); UNIT }
+  | "->" { if debug then printf "ARROW\n" else (); ARROW }
+  | '|'  { if debug then printf "BAR\n" else (); BAR }
+  | ':'  { if debug then printf "COLON\n" else (); COLON }
+  | ";;" { if debug then printf "DBL_SEMI\n" else (); DBL_SEMI }
+  | ';'  { if debug then printf "SEMI\n" else (); SEMI }
+  | "<<" { if debug then printf "DBL_LT\n" else (); DBL_LT }
+  | ">>" { if debug then printf "DBL_GT\n" else (); DBL_GT }
+  | '<'  { if debug then printf "LT\n" else (); LT }
+  | '>'  { if debug then printf "GT\n" else (); GT }
   | '\n' { incr_linenum lexbuf; scan lexbuf }
   | [' ' '\t'] { scan lexbuf }
   | "(*" { comment 0 lexbuf }
@@ -103,7 +105,7 @@ and comment level = parse
   | eof	 { raise (Lexer_error "Comments are not closed") }
 
 and str_literal = parse
-  | '\"' { printf "STRING (%s)\n" !cur_str; STRING !cur_str }
+  | '\"' { if debug then printf "STRING (%s)\n" !cur_str else (); STRING !cur_str }
   | _ as c { cur_str := (!cur_str ^ (Char.escaped c)); str_literal lexbuf }
   | eof { raise (Lexer_error "String literal not closed") }
 
