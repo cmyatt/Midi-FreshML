@@ -12,7 +12,6 @@
 *)
 
 name a, b, c;
-
 name d, e;
 
 type exp, typ where
@@ -28,35 +27,100 @@ type pair where
 type test where
   Ctor : real -> real -> test;
 
-(* Test expression grammar rules:
-    -> Literal - 
+(* Test grammar rules:
+    -> Identifier                                                          - Done
+    -> Literal (int, real, string, bool)                                   - Done
+    -> Ctor                                                                - Done
+    -> fresh                                                               - Done
+    -> if                                                                  - Done
+    -> swap                                                                - Done
+    -> name abstraction                                                    - Done
+    -> unit                                                                - Done
+    -> pair                                                                - Done
+    -> function abstraction                                                - Done
+    -> application                                                         - Done
+    -> match (and therefore branch)                                        - Done
+    -> pattern (don't care, id, ctor, name abs, unit, pair, parenthesised) - Done
+    -> local value declaration                                             - Done
+    -> top level declaration                                               - Done
+    -> binary operation                                                    - Done
+    -> unary operation                                                     - Done
+    -> parenthesised expression                                            - Done
 *)
-;
-Foo;
 
-a;
+(* Test PASSED
+    - function abstraction
+    - int literals
+    - top level let
+    - id and pair patterns
+    - identifier lookup
+    - binary operations
+   Expect: type of real * real -> real
+*)
+let add = fun (x : real * real) -> let (a, b) = x in a + b + b - a * b;
 
-let add = fun (x : int * int) -> let (a, b) = x in a + b + b - a * b;
+(* Test identifier - PASSED *)
+Foo;  (* expect failure reporting expected 1 arg *)
+a;    (* expect failure since id 'a' not bound *)
+add;  (* expect type real * real -> real *)
 
-let x = fresh : a;
+(* Test PASSED
+    - fresh
+    - real literals
+    - top level let
+    - if
+    - swap
+    - unary operation
+*)
 
-let y = fresh : a;
+let x = fresh : a;  (* expect type a_name *)
+let y = fresh : a;  (* expect type a_name *)
+fresh : x;          (* expect error since x not a name type *)
+if x = y then swap(x, y) in add (3.0, 4.2) else ~2.9; (* expect real *)
 
-fresh : x;
+(* Test id re-definition PASSED *)
+let x = 5;  (* expect int *)
 
-if x = y then add (3, 4) else ~2;
-
-let x = 5;
-
+(* Test PASSED
+    - match
+    - Ctor application
+    - Int, string and bool literals
+    - Ctor, id and don't care pattern
+   Expect type bool
+*)
 match Pair(4, "hello") with
 | Pair(n, s) -> false
+| x -> true
 | _ -> true;
 
+(* Test PASSED
+    - match
+    - Name abs and parenthesised patterns
+   Expect type real * real -> real
+*)
+match <<fresh : b>>(5+2) with
+| <<y>>(ex) -> add;
+
+(* Test unit pattern PASSED *)
+let () = ();  (* expect unit *)
+
+(* Test PASSED
+    - top level let
+    - parenthesised expression
+    - if
+    - fresh
+    - recursively defined function
+    - application
+   Expect type int -> int
+*)
 let fact (x : int) : int =
   if (fresh : a) = (fresh : a) then 1 else x*fact(x - 1);
 
-(* TODO 
-  Add post-parse pass of the AST to add all top-level defns to types.
-    -> Current grammar doesn't allow this: let _ in _
-    -> Need something like: let dec;
+(* Test PASSED
+    - string literals
+    - Name abstraction
+    - Pair
+   Expect type <<a_name>>(string * string)
 *)
+let z = <<if y = y then y else fresh : a>>("m", "n");
+

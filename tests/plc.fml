@@ -1,5 +1,5 @@
 (* Midi Fresh-ML test program #1
- * (* Polymorphic Lambda Calculus with capture-avoiding substitution *)
+ * Polymorphic Lambda Calculus with capture-avoiding substitution
  *)
 
 name tyvar, var;
@@ -27,4 +27,3 @@ let subst = fun (x : var) -> fun (e : exp) ->
   in subst;
 
 let inc = fun(x : int) -> x in inc 5;
-
