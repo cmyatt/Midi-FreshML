@@ -34,16 +34,18 @@
 %token SEMI       /* ; */
 %token DBL_SEMI   /* ;; */
 %token STAR       /*  *  */
+%token <string> ID
 %token <AbSyn.bin_op> BIN_OP
 %token <AbSyn.un_op> UN_OP
-%token <string> ID
 %token <int> INT
 %token <float> REAL
 %token <string> STRING
 %token <bool> BOOL
 
-%left LT GT SEMI DBL_SEMI BIN_OP STAR ARROW 
-%nonassoc EQUAL DBL_GT DBL_LT L_PAREN R_PAREN UN_OP
+%left SEMI DBL_SEMI STAR ARROW ELSE COMMA
+%right IF LET
+%nonassoc EQUAL DBL_GT DBL_LT L_PAREN R_PAREN UN_OP NAME TYPE WHERE MATCH WITH
+%nonassoc FUN IN FRESH SWAP DONT_CARE LT GT UNIT COLON BAR
 
 %start program 
 %type <((string, AbSyn.typ) Hashtbl.t) * AbSyn.exp list> program
@@ -51,28 +53,33 @@
 %%
 
 program:
-  | user_types let_decs SEMI { ($1, $2) }
-;
-
-let_decs:
-  | /* empty */ { [] }
-  | LET dec IN exp let_decs { (Let($2, $4), get_pos 1)::$5 }
+  | user_types SEMI { ($1, []) }
+  | exp SEMI { (types, [$1]) }
+  | error program { $2 }
 ;
 
 user_types:
-  | /* empty */ { types }
-  | NAME nty user_types { types }
-  | TYPE dty ctor_list user_types { types }
+  | NAME nty { types }
+  | TYPE dty ctor_list { types }
 ;
 
 nty:
-  | ID SEMI { Hashtbl.add types $1 (NameT $1) }
-  | ID COMMA nty { Hashtbl.add types $1 (NameT $1) }
+  | ID { Hashtbl.add types $1 (NameT $1) }
+  | nty COMMA ID { Hashtbl.add types $3 (NameT $3) }
 ;
 
 dty:
   | ID WHERE { Hashtbl.add types $1 (DataT $1) }
   | ID COMMA dty { Hashtbl.add types $1 (DataT $1) }
+;
+
+ctor:
+  | ID COLON type_name { Hashtbl.add types $1 (CtorT $3) }
+;
+
+ctor_list:
+  | ctor { }
+  | ctor_list COMMA ctor { }
 ;
 
 type_name:
@@ -97,26 +104,16 @@ type_name:
   | type_name ARROW type_name { FuncT($1, $3) }
 ;
 
-id_list:
-  | ID { [$1] }
-  | ID COMMA id_list { $1::$3 }
-;
-
-ctor:
-  | ID COLON type_name { Hashtbl.add types $1 (CtorT $3) }
-;
-
-ctor_list:
-  | ctor SEMI { }
-  | ctor COMMA ctor_list { }
+rec_func:
+  | ID L_PAREN ID COLON type_name R_PAREN COLON type_name EQUAL {
+      Hashtbl.add types $1 (FuncT($5, $8));
+      ($1, $3, $5, $8)
+    }
 ;
 
 dec:
   | pattern EQUAL exp { ValBind($1, $3) }
-  | ID L_PAREN ID COLON type_name R_PAREN COLON type_name EQUAL exp {
-      Hashtbl.add types $1 (FuncT($5, $8));
-      RecFunc($1, $3, $5, $8, $10)
-    }
+  | rec_func exp { let (a, b, c, d) = $1 in RecFunc(a, b, c, d, $2) }
 ;
 
 pattern:
@@ -161,21 +158,22 @@ exp:
   | L_PAREN exp COMMA exp R_PAREN {
       (Pair($2, $4), get_pos 1)
     }
-  | FUN L_PAREN ID COLON type_name R_PAREN ARROW exp {
-      (Lambda($3, $5, $8), get_pos 1)
-    }
   | exp exp { (App($1, $2), get_pos 1) }
   | MATCH exp WITH branch { (Match($2, $4), get_pos 1) }
+  | LET dec { (TopLet($2, get_pos 2), get_pos 1) }
   | LET dec IN exp { (Let($2, $4), get_pos 1) }
   | exp BIN_OP exp { (BinaryOp($1, $2, $3), get_pos 1) }
   | exp STAR exp { (BinaryOp($1, Mult, $3), get_pos 1) }
+  | FUN L_PAREN ID COLON type_name R_PAREN ARROW exp {
+      (Lambda($3, $5, $8), get_pos 1)
+    }
   | UN_OP exp { (UnaryOp($1, $2), get_pos 1) }
   | L_PAREN exp R_PAREN { $2 }
 ;
 
 branch:
   | BAR pattern ARROW exp { [($2, $4)] }
-  | BAR pattern ARROW exp branch { ($2, $4)::$5 }
+  | branch BAR pattern ARROW exp { ($3, $5)::$1 }
 ;
 
 %%

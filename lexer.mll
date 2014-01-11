@@ -64,13 +64,13 @@ rule scan = parse
       let n = float_of_string rnum in if debug then printf "REAL (%f)\n" n else ();
       REAL n
     }
+  | "true"
+  | "false" as b { if debug then printf "BOOL (%s)\n" b else (); BOOL (bool_of_string b) }
   | id as word {
       try let kw = Hashtbl.find keyword_tbl word in if debug then printf "%s\n" word else (); kw with
       | Not_found -> if debug then printf "ID (%s)\n" word else (); ID word
     }
   | '\"' { cur_str := ""; str_literal lexbuf }
-  | "true"
-  | "false" as b { if debug then printf "BOOL (%s)\n" b else (); BOOL (bool_of_string b) }
   | '_' { if debug then printf "DONT_CARE\n" else (); DONT_CARE }
   | '+' { if debug then printf "BIN_OP (+)\n" else (); BIN_OP(AbSyn.Add) }
   | '-' { if debug then printf "BIN_OP (-)\n" else (); BIN_OP(AbSyn.Sub) }
@@ -110,9 +110,12 @@ and str_literal = parse
   | eof { raise (Lexer_error "String literal not closed") }
 
 {
+  (*
   let rec parse lexbuf =
     let _ = scan lexbuf in (* do something *) parse lexbuf;;
+  *)
 
+  (*
   let main () =
     let cin = if Array.length Sys.argv > 1 then open_in Sys.argv.(1) else stdin
     in
@@ -126,5 +129,6 @@ and str_literal = parse
         printf "!!! %s [line %d, col %d]\n" s line col; ();;
 
   let _ = Printexc.print main ();;
+  *)
 }
 

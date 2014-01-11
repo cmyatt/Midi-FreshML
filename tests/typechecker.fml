@@ -1,0 +1,62 @@
+(* Midi-FreshML typechecker tests. *)
+
+(* Test name and type declarations (nty and dty grammar rules):
+    -> Single and multiple names       - Done
+    -> Single type, multiple ctors     - Done
+    -> Single type, single ctor        - Done
+    -> Multiple type, multiple ctors   - Done
+    -> name decl followed by type decl - Done
+    -> name decl followed by name decl - Done
+    -> type decl followed by name decl - Done
+    -> type decl followed by type decl - Done
+*)
+
+name a, b, c;
+
+name d, e;
+
+type exp, typ where
+  Foo : int -> exp,
+  Bar : string -> typ;
+
+name f;
+
+type pair where
+  Pair : int * string -> pair,
+  BoolPair : int * bool -> pair;
+
+type test where
+  Ctor : real -> real -> test;
+
+(* Test expression grammar rules:
+    -> Literal - 
+*)
+;
+Foo;
+
+a;
+
+let add = fun (x : int * int) -> let (a, b) = x in a + b + b - a * b;
+
+let x = fresh : a;
+
+let y = fresh : a;
+
+fresh : x;
+
+if x = y then add (3, 4) else ~2;
+
+let x = 5;
+
+match Pair(4, "hello") with
+| Pair(n, s) -> false
+| _ -> true;
+
+let fact (x : int) : int =
+  if (fresh : a) = (fresh : a) then 1 else x*fact(x - 1);
+
+(* TODO 
+  Add post-parse pass of the AST to add all top-level defns to types.
+    -> Current grammar doesn't allow this: let _ in _
+    -> Need something like: let dec;
+*)
