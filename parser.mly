@@ -17,7 +17,7 @@
   let debug = true;;
 %}
 
-%token NAME TYPE WHERE IF THEN ELSE MATCH WITH LET REC FUN IN FRESH SWAP
+%token NAME TYPE WHERE IF THEN ELSE MATCH WITH LET REC FUN IN FRESH SWAP LIST
 %token INT_T REAL_T BOOL_T STRING_T UNIT_T
 %token L_PAREN R_PAREN
 %token DONT_CARE  /* _ */
@@ -113,7 +113,7 @@ rec_func:
 
 dec:
   | pattern EQUAL exp { ValBind($1, $3) }
-  | rec_func exp { let (a, b, c, d) = $1 in RecFunc(a, b, c, d, $2) }
+  | rec_func exp { let (a, b, c, d) = $1 in RecF(RecFunc(a, b, c, d, $2, [])) }
 ;
 
 pattern:
@@ -165,7 +165,7 @@ exp:
   | exp BIN_OP exp { (BinaryOp($1, $2, $3), get_pos 1) }
   | exp STAR exp { (BinaryOp($1, Mult, $3), get_pos 1) }
   | FUN L_PAREN ID COLON type_name R_PAREN ARROW exp {
-      (Lambda($3, $5, $8), get_pos 1)
+      (Lambda($3, $5, $8, []), get_pos 1)
     }
   | UN_OP exp { (UnaryOp($1, $2), get_pos 1) }
   | L_PAREN exp R_PAREN { $2 }

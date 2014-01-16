@@ -5,5 +5,6 @@ echo "Cleaning bin/..."
 rm bin/* 2> /dev/null;
 echo "Removing generated lexer and parser..."
 rm lexer.ml parser.ml parser.mli 2> /dev/null;
-
+echo "Removing swap (~) files..."
+rm *~ tests/*~ 2> /dev/null;
 

@@ -1,7 +1,15 @@
 ToDo
 ====
 
-Test all grammar rules.
+Add definition of values to grammar (and/or dynamic semantics).
+
+Specify swap operation in language_spec collection.
+
+Compile with -annot to see if tail call optimization is used.
+
+Give a proof of the fact that the M of the MATCH state is always either empty or contains 1 element.
+
+Start interpreter implementation.
 
 Change if to branch on a boolean type, and add a boolean rule to the grammar
 to allow for general expression comparison.

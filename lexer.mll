@@ -26,7 +26,8 @@
   let debug = false;;
 
   let keyword_tbl =
-    create_hashtable 18 [
+    create_hashtable 19 [
+      ("list", LIST);
       ("name", NAME);
       ("type", TYPE);
       ("where", WHERE);
