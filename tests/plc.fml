@@ -27,3 +27,7 @@ let subst = fun (x : var) -> fun (e : exp) ->
   in subst;
 
 let inc = fun(x : int) -> x in inc 5;
+
+let x = 5 in
+let add = fun(pair : real * real) -> let (x, y) = pair in x+y in
+let z = add(3., 4.) in x+6;
