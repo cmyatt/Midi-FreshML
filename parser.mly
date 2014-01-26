@@ -184,10 +184,7 @@ exp:
         let t = Hashtbl.find types $1 in
         (match t with
         | CtorT _ -> (Ctor($1, $2), get_pos 1)
-        | FuncT _ -> (App((Id($1), get_pos 1), $2), get_pos 1)
-        | _ ->
-            parse_error ("Cannot apply expression to non-function "^"type"^$1);
-            raise Parse_error)
+        | _ -> (App((Id($1), get_pos 1), $2), get_pos 1))
       with
       | Not_found -> (App((Id($1), get_pos 1), $2), get_pos 1)
     }
@@ -227,7 +224,7 @@ top_let:
 
 branch:
   | BAR pattern ARROW exp { [($2, $4)] }
-  | branch BAR pattern ARROW exp { ($3, $5)::$1 }
+  | branch BAR pattern ARROW exp { $1 @ [$3, $5] (* TODO consider using a different data structure to avoid costly appends *) }
 ;
 
 %%

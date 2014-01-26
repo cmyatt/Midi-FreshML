@@ -13,6 +13,7 @@ type token =
   | IN
   | FRESH
   | SWAP
+  | LIST
   | INT_T
   | REAL_T
   | BOOL_T
@@ -43,4 +44,4 @@ type token =
   | BOOL of (bool)
 
 val program :
-  (Lexing.lexbuf  -> token) -> Lexing.lexbuf -> ((string, AbSyn.typ) Hashtbl.t) * AbSyn.exp list
+  (Lexing.lexbuf  -> token) -> Lexing.lexbuf -> ((string, int) Hashtbl.t) * ((string, AbSyn.typ) Hashtbl.t) * AbSyn.exp list
