@@ -23,12 +23,19 @@ let subst = fun (x : var) -> fun (e : exp) ->
     | App(y, z) -> App(s y, s z)
     | Gen(<<t>>y) -> Gen(<<t>>(s y))
     | Spec(y, t) -> Spec(s y, t)
-  in s
-  in subst;
+  in s;
 
-let inc = fun(x : int) -> x in inc 5;
+let (x, y) = (fresh : var, fresh : var);
+
+let e = ((subst x) Var(y)) Var(x);
+
+let inc = fun(x : int) -> x+1;
 
 let x = 5 in
-  let add = fun(pair : real * real) ->
-    let (x, y) = pair in x+y in
-      let z = add(3., 4.) in x+6;
+  let add = fun(pair : real * real) -> let (x, y) = pair in x+y
+	in
+  let z = add(3., 4.) in z+x+6+2;
+
+let awd = inc;
+
+awd 6;

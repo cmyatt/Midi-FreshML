@@ -1,5 +1,7 @@
-ToDo
+oDo
 ====
+
+Add TopLet to dynamic semantics.
 
 Add definition of values to grammar (and/or dynamic semantics).
 

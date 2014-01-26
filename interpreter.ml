@@ -16,9 +16,19 @@ let rec lookup s env =
   | [] -> raise Not_found
   | xs::xss -> look s xs;;
 
+let print_env env =
+	List.iter
+		(fun xs ->
+			print_string "--------------------------------------------------------------\n";
+			List.iter (fun (x, (e, _)) -> Printf.printf "%s -> %s\n" x (string_of_expr e)) xs;
+			print_string "--------------------------------------------------------------\n")
+		env;;
+
 (* Cons x onto the list of lists xss. *)
 let cons x xss =
-  let ys::yss = xss in ((x :: ys) :: yss);;
+	match xss with
+	| [] -> [[x]]
+  | ys::yss -> ((x :: ys) :: yss);;
 
 (* The atoms Hashtbl maintains a count for the number of generated atoms of each
  * type. To generate a new one, get the count (=n), increment it in atoms, and
@@ -36,6 +46,10 @@ let gen_atom atoms s =
  *)
 let rec swap a1 a2 v =
   match v with 
+  | IntLiteral(n), p -> (IntLiteral(n), p)
+  | RealLiteral(r), p -> (RealLiteral(r), p)
+  | BoolLiteral(b), p -> (BoolLiteral(b), p)
+  | StringLiteral(s), p -> (StringLiteral(s), p)
   | NameLiteral(n), p -> 
       if n = a1 then (NameLiteral(a2), p)
       else if n = a2 then (NameLiteral(a1), p) else (NameLiteral(n), p)
@@ -56,6 +70,7 @@ and swap_env a1 a2 env =
   | [] -> []
   | xs -> List.map (fun (x, v) -> (x, swap a1 a2 v)) xs;;
 
+(* TODO handle precedance correctly *)
 (* Perform a binary operation on two numeric values *)
 let bin_operate v1 op v2 =
   let (v, _) = v1 in
@@ -103,18 +118,18 @@ let un_operate u v =
  * fs - expr list
  * ast - exp
  *
- * TODO be sure to check for values in exp_state - if so, then forward straight
- * to val_state.
- *
- * Returns a 3-tuple of (new atoms, new env, value)
+ * Returns a 2-tuple of (new env, value)
+ * No need to return new atoms - assume user still has a reference to the Hashtbl.
  *)
 let rec exp_state atoms env fs ast =
   if is_val ast then val_state atoms env fs ast
   else
     match ast with
-    | Id(s), _ -> val_state atoms env fs (lookup s env)
+    | Id(s), _ ->
+				(try val_state atoms env fs (lookup s env) with
+				Not_found -> (print_env env; raise (Run_time_error ("Id "^s^" not found in environment"))))
     | Ctor(s, (e, p1)), p2 ->
-        val_state atoms env ((Ctor(s, (EmptySlot, p1)), p2)::fs) (e, p1)
+        exp_state atoms env ((Ctor(s, (EmptySlot, p1)), p2)::fs) (e, p1)
     | Fresh(s), p -> let a = gen_atom atoms s in val_state atoms env fs (a, p)
     | If((e1, p1), e2, e3, e4), p2 ->
         exp_state atoms env ((If((EmptySlot, p1), e2, e3, e4), p2)::fs) (e1, p1)
@@ -124,6 +139,8 @@ let rec exp_state atoms env fs ast =
         exp_state atoms env ((NameAb((EmptySlot, p1), e2), p2)::fs) (e1, p1)
     | Lambda(s, t, e, _), p ->
         val_state atoms env fs (Lambda(s, t, e, (List.hd env)), p)
+		| Pair((e1, p1), e2), p2 ->
+				exp_state atoms env ((Pair((EmptySlot, p1), e2), p2)::fs) (e1, p1)
     | BinaryOp((e1, p1), b, e2), p2 ->
         exp_state atoms env ((BinaryOp((EmptySlot, p1), b, e2), p2)::fs) (e1, p1)
     | UnaryOp(u, (e, p1)), p2 ->
@@ -136,13 +153,18 @@ let rec exp_state atoms env fs ast =
         exp_state atoms env ((Let(ValBind(pat, (EmptySlot, p1)), e2), p2)::fs) (e1, p1)
     | Let(RecF(RecFunc(s1, s2, t1, t2, e, _)), e'), p ->
         exp_state atoms (cons (s1, (RecFunc(s1, s2, t1, t2, e, (List.hd env)), p)) env) fs e'
+		| TopLet(ValBind(pat, (e1, p1)), p2), p3 ->
+				exp_state atoms env ((TopLet(ValBind(pat, (EmptySlot, p1)), p2), p3)::fs) (e1, p1)
+    | TopLet(RecF(RecFunc(s1, s2, t1, t2, e, _)), p1), p2 ->
+				let f = (RecFunc(s1, s2, t1, t2, e, List.hd env), p1) in
+        val_state atoms (cons (s1, f) env) fs f
 
 (* TODO Catch match failures for Exp individually (e.g. if NameAb
  * doesn't have EmptySlot *)
 (* Invariant: is_val ast = true *)
 and val_state atoms env fs ast =
   match fs with
-  | [] -> (atoms, env, ast)
+  | [] -> (env, ast)
   | (EofFunc, _)::xs -> val_state atoms (List.tl env) xs ast
   | (Ctor(s, (EmptySlot, _)), p)::xs -> val_state atoms env xs (Ctor(s, ast), p)
   | (If((EmptySlot, _), (e1, p1), e2, e3), p2)::xs ->
@@ -163,6 +185,9 @@ and val_state atoms env fs ast =
       exp_state atoms env ((NameAb(ast, (EmptySlot, p1)), p2)::xs) (e, p1)
   | (NameAb(a, (EmptySlot, _)), p)::xs ->
       val_state atoms env xs (NameAb(a, ast), p)
+	| (Pair((EmptySlot, _), (e, p1)), p2)::xs ->
+			exp_state atoms env ((Pair(ast, (EmptySlot, p1)), p2)::xs) (e, p1)
+	| (Pair(v, (EmptySlot, _)), p)::xs -> val_state atoms env xs (Pair(v, ast), p)
   | (BinaryOp((EmptySlot, _), b, (e, p1)), p2)::xs ->
       exp_state atoms env ((BinaryOp(ast, b, (EmptySlot, p1)), p2)::xs) (e, p1)
   | (BinaryOp(v, b, (EmptySlot, _)), _)::xs ->
@@ -183,6 +208,8 @@ and val_state atoms env fs ast =
       match_state atoms env [(br, ast)] ((Let(ValBind(pat, (EmptySlot, p1)), e), p2)::xs) ast
   | (Let(ValBind(pat, (EmptySlot, p1)), e), p2)::xs ->
       match_state atoms env [] ((Let(ValBind(pat, (EmptySlot, p1)), e), p2)::xs) ast
+  | (TopLet(ValBind(pat, (EmptySlot, p1)), p2), p3)::xs ->
+      match_state atoms env [] ((Let(ValBind(pat, (EmptySlot, p1)), ast), p3)::xs) ast
 
 (* Invariant: is_val v = true *)
 and match_state atoms env ms fs ast =
@@ -199,7 +226,7 @@ and match_state atoms env ms fs ast =
         let (br, v)::ys = ms in
         val_state atoms env ((Match((EmptySlot, p1), br), p2)::xs) v)
       else
-        raise (Run_time_error ("Match failed: nothing matched constructor "^s2))
+        raise (Run_time_error ("Match failed: could not match constructor "^s2))
   | (Let(ValBind(NameAbsP(IdP(x), pat), (EmptySlot, p1)), e), p2)::xs ->
       let NameAb((NameLiteral(Name(s, n)), p3), v), _ = ast in
       let NameLiteral(a') = gen_atom atoms s in

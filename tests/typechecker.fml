@@ -122,7 +122,6 @@ let fact (x : int) : int =
 *)
 let z = <<if y = y then y else fresh : a>>("m", "n");
 
-
 type test where
   A : test -> test,
   B : test -> test,
@@ -132,16 +131,4 @@ match A (B (C 2)) with
 | A (B (B x)) -> true
 | A (A (B x)) -> true
 | A (B (C x)) -> false;
-
-(*
-  VAL[A, E, (match _ with A(B(B x)) -> true | A(B(C x)) -> false)::F, A(B(C 2))]
-  ----->
-  MATCH[A, E, [(A(B(C x)), A(B(C 2))], (let A(B(B x)) = _ in true)::F, A(B(C 2))]
-  ----->
-  MATCH[A, E, [(A(B(C x)), A(B(C 2))], (let B(B x) = _ in true)::F, B(C 2)]
-  ----->
-  MATCH[A, E, [(A(B(C x)), A(B(C 2))], (let B x = _ in true)::F, C 2]
-  ----->
-  MATCH[A, E, [(A(B(C x)), A(B(C 2))], (let B x = _ in true)::F, C 2]
-*)
 

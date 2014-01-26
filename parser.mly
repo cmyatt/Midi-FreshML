@@ -9,10 +9,20 @@
 
   let parse_error s =
     let pos = Parsing.symbol_start_pos () in
-    printf "%s [line %d, col %d]\n" s pos.pos_lnum (pos.pos_cnum - pos.pos_bol);
+    printf "[Error] %s [line %d, col %d]\n" s pos.pos_lnum (pos.pos_cnum - pos.pos_bol);
     flush stdout;;
+	
+	let cur_types = ref [];;	(* contains the ids of the types in the current type ...; definition. *)
+
+	(* Expect cur_types to be non-empty whenever typ_opts is called. *)
+	let typ_opts prefix =
+		match !cur_types with
+		| x::[] -> x
+		| xs -> prefix^"{"^(List.fold_left (fun x y -> if x = "" then y else x^", "^y) "" xs)^"}";;
 
   let types = Hashtbl.create 50;; (* key: type name, val: actual type *)
+	
+  let atoms = Hashtbl.create 5;;	(* key: name type id, val: int *)
 
   let debug = true;;
 %}
@@ -48,38 +58,78 @@
 %nonassoc FUN IN FRESH SWAP DONT_CARE LT GT UNIT COLON BAR
 
 %start program 
-%type <((string, AbSyn.typ) Hashtbl.t) * AbSyn.exp list> program
+%type <((string, int) Hashtbl.t) * ((string, AbSyn.typ) Hashtbl.t) * AbSyn.exp list> program
 
 %%
 
 program:
-  | user_types SEMI { ($1, []) }
-  | exp SEMI { (types, [$1]) }
+  | user_types SEMI { (atoms, $1, []) }
+  | top_let SEMI { (atoms, types, [$1]) }
+  | exp SEMI { (atoms, types, [$1]) }
   | error program { $2 }
 ;
 
 user_types:
-  | NAME nty { types }
-  | TYPE dty ctor_list { types }
+  | NAME nty { printf "\n"; types }
+  | TYPE dty ctor_list { printf "type %s = %s\n" $2 $3; cur_types := []; types }
 ;
 
 nty:
-  | ID { Hashtbl.add types $1 (NameT $1) }
-  | nty COMMA ID { Hashtbl.add types $3 (NameT $3) }
+  | ID {
+			if Hashtbl.mem atoms $1 then
+				(parse_error ("Re-declaration of name type: "^$1); raise Parse_error)
+			else
+				(printf "name %s" $1;
+				Hashtbl.add atoms $1 0;
+				Hashtbl.add types $1 (NameT $1))
+		}
+  | nty COMMA ID {
+			if Hashtbl.mem atoms $3 then
+				(parse_error ("Re-declaration of name type: "^$3); raise Parse_error)
+			else
+				(printf ", %s" $3;
+				Hashtbl.add atoms $3 0;
+				Hashtbl.add types $3 (NameT $3))
+		}
 ;
 
 dty:
-  | ID WHERE { Hashtbl.add types $1 (DataT $1) }
-  | ID COMMA dty { Hashtbl.add types $1 (DataT $1) }
+  | ID WHERE {
+			Hashtbl.add types $1 (DataT $1);
+			cur_types := ($1 :: !cur_types);
+			$1
+		}
+  | ID COMMA dty {
+			Hashtbl.add types $1 (DataT $1);
+			cur_types := ($1 :: !cur_types);
+			($1 ^ ", " ^ $3)
+		}
 ;
 
 ctor:
-  | ID COLON type_name { Hashtbl.add types $1 (CtorT $3) }
+  | ID COLON type_name {
+			(* Check that type_name is a function type to one of the just-defined types *)
+			(* TODO Do we want to remove ctors for data type on error? *)
+			(match $3 with
+			| FuncT(t1, DataT(s)) ->
+					if List.mem s !cur_types then ()
+					else
+						(parse_error ("Got "^s^" but expected "^(typ_opts "one of ")^" in constructor "^$1);
+						cur_types := [];
+						raise Parse_error)
+			| _ ->
+					(parse_error ("Got "^(string_of_typ $3)^" but expected "^(typ_opts "α -> β where β ∈ ")^
+						" in constructor "^$1);
+					cur_types := [];
+					raise Parse_error));
+			Hashtbl.add types $1 (CtorT $3);
+			$1 ^ " : " ^ (string_of_typ $3)
+		}
 ;
 
 ctor_list:
-  | ctor { }
-  | ctor_list COMMA ctor { }
+  | ctor { "\n  | " ^ $1 }
+  | ctor_list COMMA ctor { $1 ^ "\n  | " ^ $3 }
 ;
 
 type_name:
@@ -102,6 +152,7 @@ type_name:
   | UNIT_T { UnitT }
   | type_name STAR type_name { ProdT($1, $3) }
   | type_name ARROW type_name { FuncT($1, $3) }
+	| L_PAREN type_name R_PAREN { $2 }
 ;
 
 rec_func:
@@ -160,7 +211,6 @@ exp:
     }
   | exp exp { (App($1, $2), get_pos 1) }
   | MATCH exp WITH branch { (Match($2, $4), get_pos 1) }
-  | LET dec { (TopLet($2, get_pos 2), get_pos 1) }
   | LET dec IN exp { (Let($2, $4), get_pos 1) }
   | exp BIN_OP exp { (BinaryOp($1, $2, $3), get_pos 1) }
   | exp STAR exp { (BinaryOp($1, Mult, $3), get_pos 1) }
@@ -169,6 +219,10 @@ exp:
     }
   | UN_OP exp { (UnaryOp($1, $2), get_pos 1) }
   | L_PAREN exp R_PAREN { $2 }
+;
+
+top_let:
+  | LET dec { (TopLet($2, get_pos 2), get_pos 1) }
 ;
 
 branch:
