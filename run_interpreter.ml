@@ -58,7 +58,8 @@ let run get_lexbuf top_lev_env =
 						| _ -> print_string ("- : "^(AbSyn.string_of_typ t)^" = "^(AbSyn.string_of_expr v)^"\n"))
 					with
 					| TyCheck.Type_error s -> print_string ("[Error] "^s^"\n")
-					| Interpreter.Run_time_error s -> print_string ("[Error] "^s^"\n"))
+					| Interpreter.Run_time_error s -> print_string ("[Error] "^s^"\n")
+					| Stack_overflow -> print_string "[Error] Stack overflow\n")
 				| _ -> print_string "Parse error: multiple top-level expressions parsed.\n"
 			with
 			| Invalid_argument _ ->

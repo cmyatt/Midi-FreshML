@@ -206,16 +206,22 @@ and val_state atoms env fs ast =
         (((s1, (RecFunc(s1, s2, t1, t2, e, en), p1))::(s2, ast)::en)::env)
         ((EofFunc, p2)::xs) e
   | (Match((EmptySlot, p1), (pat, e)::[]), p2)::xs ->
-      match_state atoms env [] ((Let(ValBind(pat, (EmptySlot, p1)), e), p2)::xs) ast
+      match_init atoms env [] ((Let(ValBind(pat, (EmptySlot, p1)), e), p2)::xs) false ast
   | (Match((EmptySlot, p1), (pat, e)::br), p2)::xs ->
-      match_state atoms env [(br, ast)] ((Let(ValBind(pat, (EmptySlot, p1)), e), p2)::xs) ast
+      match_init atoms env [(br, ast)] ((Let(ValBind(pat, (EmptySlot, p1)), e), p2)::xs) false ast
   | (Let(ValBind(pat, (EmptySlot, p1)), e), p2)::xs ->
-      match_state atoms env [] ((Let(ValBind(pat, (EmptySlot, p1)), e), p2)::xs) ast
+      match_state atoms env [] ((Let(ValBind(pat, (EmptySlot, p1)), e), p2)::xs) false ast
   | (TopLet(ValBind(pat, (EmptySlot, p1)), p2), p3)::xs ->
-      match_state atoms env [] ((Let(ValBind(pat, (EmptySlot, p1)), ast), p3)::xs) ast
+      match_state atoms env [] ((Let(ValBind(pat, (EmptySlot, p1)), ast), p3)::xs) true ast
+
+(* Duplicate (hd env) and push EofFunc onto F to create a new scope for Match exprs *)
+and match_init atoms env ms fs is_top ast =
+	let x::xs = fs in
+	let e::es = env in
+	match_state atoms (e::e::es) ms (x::(EofFunc, (0, 0))::xs) is_top ast
 
 (* Invariant: is_val v = true *)
-and match_state atoms env ms fs ast =
+and match_state atoms env ms fs is_top ast =
   match fs with
   | (Let(ValBind(DontCareP, _), e), _)::xs -> exp_state atoms env xs e
   | (Let(ValBind(IdP(s), (EmptySlot, _)), e), _)::xs ->
@@ -223,23 +229,25 @@ and match_state atoms env ms fs ast =
   | (Let(ValBind(CtorP(s1, pat), (EmptySlot, p1)), e), p2)::xs ->
       let Ctor(s2, e'), _ = ast in
       if s1 = s2 then
-        match_state atoms env ms ((Let(ValBind(pat, (EmptySlot, p1)), e), p2)::xs) e'
+        match_state atoms env ms ((Let(ValBind(pat, (EmptySlot, p1)), e), p2)::xs) is_top e'
       else if (List.length ms) > 0 then
-        ((assert ((List.length ms) == 1)); (* ms should have 0 or 1 elements *)
-        let (br, v)::ys = ms in
-        val_state atoms env ((Match((EmptySlot, p1), br), p2)::xs) v)
+        (assert ((List.length ms) == 1); (* ms should have 0 or 1 elements *)
+        let (br, v)::_ = ms in
+				(* Need to discard env and EofFunc which we added in match_init *)
+        val_state atoms (List.tl env) ((Match((EmptySlot, p1), br), p2)::(List.tl xs)) v)
       else
         raise (Run_time_error ("Match failed: could not match constructor "^s2))
   | (Let(ValBind(NameAbsP(IdP(x), pat), (EmptySlot, p1)), e), p2)::xs ->
-      let NameAb((NameLiteral(Name(s, n)), p3), v), _ = ast in
+      let NameAb((NameLiteral(Name(s, n)), p3), v), p' = ast in
       let NameLiteral(a') = gen_atom atoms s in
+			let v' = swap (Name(s, n)) a' v in
+			let e' = if is_top then NameAb((NameLiteral(a'), p3), v'), p' else e in
       match_state atoms (cons (x, (NameLiteral(a'), p3)) env) ms
-        ((Let(ValBind(pat, (EmptySlot, p1)), e), p2)::xs)
-        (swap (Name(s, n)) a' v)
+        ((Let(ValBind(pat, (EmptySlot, p1)), e'), p2)::xs) is_top v'
   | (Let(ValBind(UnitP, _), e), _)::xs -> exp_state atoms env xs e
   | (Let(ValBind(ProdP(pat1, pat2), (EmptySlot, p1)), e), p2)::xs ->
       let Pair(v1, v2), _ = ast in
       match_state atoms env ms
         ((Let(ValBind(pat1, (EmptySlot, p1)),
-          (Let(ValBind(pat2, v2), e), p2)), p2)::xs) v1;;
+          (Let(ValBind(pat2, v2), e), p2)), p2)::xs) is_top v1;;
 
