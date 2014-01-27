@@ -52,7 +52,7 @@
 %token <string> STRING
 %token <bool> BOOL
 
-%left SEMI DBL_SEMI STAR ARROW ELSE COMMA
+%left SEMI DBL_SEMI STAR ARROW COMMA ELSE
 %right IF LET
 %nonassoc EQUAL DBL_GT DBL_LT L_PAREN R_PAREN UN_OP NAME TYPE WHERE MATCH WITH
 %nonassoc FUN IN FRESH SWAP DONT_CARE LT GT UNIT COLON BAR
@@ -178,7 +178,14 @@ pattern:
 ;
 
 exp:
-  | ID { (Id $1, get_pos 1) }
+	| sub_exp { $1 }
+  | IF exp THEN exp ELSE sub_exp {
+      (If($2, $4, $6), get_pos 1)
+    }
+;
+
+sub_exp:
+	| ID { (Id $1, get_pos 1) }
   | ID exp {
       try
         let t = Hashtbl.find types $1 in
@@ -188,14 +195,12 @@ exp:
       with
       | Not_found -> (App((Id($1), get_pos 1), $2), get_pos 1)
     }
+	| exp EQUAL exp { (EqTest($1, $3), get_pos 1) }
   | INT { (IntLiteral($1), get_pos 1) }
   | REAL { (RealLiteral($1), get_pos 1) }
   | BOOL { (BoolLiteral($1), get_pos 1) }
   | STRING { (StringLiteral($1), get_pos 1) }
   | FRESH COLON ID { (Fresh $3, get_pos 1) }
-  | IF exp EQUAL exp THEN exp ELSE exp {
-      (If($2, $4, $6, $8), get_pos 1)
-    }
   | SWAP L_PAREN exp COMMA exp R_PAREN IN exp {
       (Swap($3, $5, $8), get_pos 1)
     }
@@ -209,13 +214,14 @@ exp:
   | exp exp { (App($1, $2), get_pos 1) }
   | MATCH exp WITH branch { (Match($2, $4), get_pos 1) }
   | LET dec IN exp { (Let($2, $4), get_pos 1) }
-  | exp BIN_OP exp { (BinaryOp($1, $2, $3), get_pos 1) }
-  | exp STAR exp { (BinaryOp($1, Mult, $3), get_pos 1) }
   | FUN L_PAREN ID COLON type_name R_PAREN ARROW exp {
       (Lambda($3, $5, $8, []), get_pos 1)
     }
   | UN_OP exp { (UnaryOp($1, $2), get_pos 1) }
   | L_PAREN exp R_PAREN { $2 }
+
+  | exp STAR exp { (BinaryOp($1, Mult, $3), get_pos 1) }
+  | exp BIN_OP exp { (BinaryOp($1, $2, $3), get_pos 1) }
 ;
 
 top_let:

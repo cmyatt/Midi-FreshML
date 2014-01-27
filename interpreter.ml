@@ -131,8 +131,10 @@ let rec exp_state atoms env fs ast =
     | Ctor(s, (e, p1)), p2 ->
         exp_state atoms env ((Ctor(s, (EmptySlot, p1)), p2)::fs) (e, p1)
     | Fresh(s), p -> let a = gen_atom atoms s in val_state atoms env fs (a, p)
-    | If((e1, p1), e2, e3, e4), p2 ->
-        exp_state atoms env ((If((EmptySlot, p1), e2, e3, e4), p2)::fs) (e1, p1)
+		| EqTest((e1, p1), e2), p2 ->
+				exp_state atoms env ((EqTest((EmptySlot, p1), e2), p2)::fs) (e1, p1)
+    | If((e1, p1), e2, e3), p2 ->
+        exp_state atoms env ((If((EmptySlot, p1), e2, e3), p2)::fs) (e1, p1)
     | Swap((e1, p1), e2, e3), p2 ->
         exp_state atoms env ((Swap((EmptySlot, p1), e2, e3), p2)::fs) (e1, p1)
     | NameAb((e1, p1), e2), p2 ->
@@ -167,12 +169,13 @@ and val_state atoms env fs ast =
   | [] -> (env, ast)
   | (EofFunc, _)::xs -> val_state atoms (List.tl env) xs ast
   | (Ctor(s, (EmptySlot, _)), p)::xs -> val_state atoms env xs (Ctor(s, ast), p)
-  | (If((EmptySlot, _), (e1, p1), e2, e3), p2)::xs ->
-      exp_state atoms env ((If(ast, (EmptySlot, p1), e2, e3), p2)::xs) (e1, p1)
-  | (If((a1, _), (EmptySlot, _), e1, e2), _)::xs ->
-      let (a2, _) = ast in
-      if a1 = a2 then exp_state atoms env xs e1
-      else exp_state atoms env xs e2
+	| (EqTest((EmptySlot, _), (e, p1)), p2)::xs ->
+			exp_state atoms env ((EqTest(ast, (EmptySlot, p1)), p2)::xs) (e, p1)
+	| (EqTest((v1, _), (EmptySlot, _)), p)::xs ->
+			let v2, _ = ast in exp_state atoms env xs (BoolLiteral(v1 = v2), p)
+  | (If((EmptySlot, _), (e1, p1), e2), p2)::xs ->
+			let BoolLiteral(b), _ = ast in
+      exp_state atoms env xs (if b then (e1, p1) else e2)
   | (Swap((EmptySlot, _), (e1, p1), e2), p2)::xs ->
       exp_state atoms env ((Swap(ast, (EmptySlot, p1), e2), p2)::xs) (e1, p1)
   | (Swap(a, (EmptySlot, _), (e, p1)), p2)::xs ->

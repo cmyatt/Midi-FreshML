@@ -1,7 +1,9 @@
 oDo
 ====
 
-Add TopLet to dynamic semantics.
+Add EqTest to dynamic semantics.
+
+Add Inequalities and String concatenation to binary operations.
 
 Add definition of values to grammar (and/or dynamic semantics).
 

@@ -60,9 +60,11 @@ let run get_lexbuf top_lev_env =
 					| TyCheck.Type_error s -> print_string ("[Error] "^s^"\n")
 					| Interpreter.Run_time_error s -> print_string ("[Error] "^s^"\n"))
 				| _ -> print_string "Parse error: multiple top-level expressions parsed.\n"
-			with Invalid_argument _ ->
+			with
+			| Invalid_argument _ ->
 					(*let pos = lexbuf.lex_curr_p in*)
-					Printf.printf "[Error] Syntax error\n"(* [line %d, col %d]\n pos.pos_lnum (pos.pos_cnum - pos.pos_bol)*))
+					Printf.printf "[Error] Syntax error\n"(* [line %d, col %d]\n pos.pos_lnum (pos.pos_cnum - pos.pos_bol)*)
+			| Parsing.Parse_error -> print_string "[Error]\n")
 		done
   with End_of_file -> ();;
 
@@ -73,7 +75,9 @@ let main () =
 			let cin = open_in Sys.argv.(1) in
 			let lexbuf = from_channel cin in
 			run (fun () -> lexbuf) top_level_env
-		else run repl_lexbuf top_level_env
+		else
+			(print_string "\tMidi-FreshML version 0.1\n\n";
+			run repl_lexbuf top_level_env)
   with End_of_file -> print_string "End of file reached.\n"; exit 0;;
 
 let _ = Printexc.print main ();;
