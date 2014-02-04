@@ -77,6 +77,11 @@ rule scan = parse
   | '-' { if debug then printf "BIN_OP (-)\n" else (); BIN_OP(AbSyn.Sub) }
   | '*' { if debug then printf "STAR\n" else (); STAR }
   | '/' { if debug then printf "BIN_OP (/)\n" else (); BIN_OP(AbSyn.Div) }
+  | '^' { if debug then printf "BIN_OP (^)\n" else (); BIN_OP(AbSyn.Concat) }
+  | ">=" { if debug then printf "GT_EQ\n" else (); BIN_OP(AbSyn.Gteq) }
+  | "<=" { if debug then printf "LT_EQ\n" else (); BIN_OP(AbSyn.Lteq) }
+  | '<'  { if debug then printf "LT\n" else (); BIN_OP(AbSyn.Lt) }
+  | '>'  { if debug then printf "GT\n" else (); BIN_OP(AbSyn.Gt) }
   | '('  { if debug then printf "L_PAREN\n" else (); L_PAREN }
   | ')'  { if debug then printf "R_PAREN\n" else (); R_PAREN }
   | '~'  { if debug then printf "UN_OP (~)\n" else (); UN_OP(AbSyn.Neg) }
@@ -90,8 +95,6 @@ rule scan = parse
   | ';'  { if debug then printf "SEMI\n" else (); SEMI }
   | "<<" { if debug then printf "DBL_LT\n" else (); DBL_LT }
   | ">>" { if debug then printf "DBL_GT\n" else (); DBL_GT }
-  | '<'  { if debug then printf "LT\n" else (); LT }
-  | '>'  { if debug then printf "GT\n" else (); GT }
   | '\n' { incr_linenum lexbuf; scan lexbuf }
   | [' ' '\t'] { scan lexbuf }
   | "(*" { comment 0 lexbuf }

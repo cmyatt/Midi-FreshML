@@ -37,13 +37,13 @@ let rec repl_lexbuf () =
  * - Getting too many useless error messages atm
  *)
 
-let run get_lexbuf top_lev_env =
+let rec run get_lexbuf top_lev_env =
   try
 		let env = ref [[]] in
 		while true do
 			(try
 				let atoms, types, es = Parser.program Lexer.scan (get_lexbuf ()) in
-				match es with
+				(match es with
 				| [] -> ()
 				| (e, p)::[] ->
 					(try
@@ -60,12 +60,12 @@ let run get_lexbuf top_lev_env =
 					| TyCheck.Type_error s -> print_string ("[Error] "^s^"\n")
 					| Interpreter.Run_time_error s -> print_string ("[Error] "^s^"\n")
 					| Stack_overflow -> print_string "[Error] Stack overflow\n")
-				| _ -> print_string "Parse error: multiple top-level expressions parsed.\n"
+				| _ -> print_string "Parse error: multiple top-level expressions parsed.\n")
 			with
 			| Invalid_argument _ ->
 					(*let pos = lexbuf.lex_curr_p in*)
 					Printf.printf "[Error] Syntax error\n"(* [line %d, col %d]\n pos.pos_lnum (pos.pos_cnum - pos.pos_bol)*)
-			| Parsing.Parse_error -> print_string "[Error]\n")
+			| Parsing.Parse_error -> print_string "[Error] Syntax error\n")
 		done
   with End_of_file -> ();;
 

@@ -23,8 +23,6 @@ type token =
   | R_PAREN
   | DONT_CARE
   | EQUAL
-  | LT
-  | GT
   | COMMA
   | DBL_LT
   | DBL_GT

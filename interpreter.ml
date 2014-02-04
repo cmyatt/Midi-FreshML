@@ -16,6 +16,12 @@ let rec lookup s env =
   | [] -> raise Not_found
   | xs::xss -> look s xs;;
 
+let env_stats env fs =
+	let fs_size = List.length fs in
+	let stack_size = List.length env in
+	let avg_env_len = (List.fold_left (fun y xs -> (List.fold_left (fun x _ -> x+.1.) y xs)) 0. env) /. (float_of_int stack_size) in
+	Printf.printf "stack size = %d\tavg. env length = %f\tframe stack size = %d\n" stack_size avg_env_len fs_size;;
+
 let print_env env =
 	List.iter
 		(fun xs ->
@@ -70,9 +76,32 @@ and swap_env a1 a2 env =
   | [] -> []
   | xs -> List.map (fun (x, v) -> (x, swap a1 a2 v)) xs;;
 
+let rec calc_ineq atoms v1 op v2 =
+	match op with
+	| Gt -> BoolLiteral(v1 > v2)
+	| Gteq -> BoolLiteral(v1 >= v2)
+	| Lt -> BoolLiteral(v1 < v2)
+	| Lteq -> BoolLiteral(v1 <= v2)
+	| Eq ->
+			(match v1 with
+			| NameAb((NameLiteral(Name(s, n)), _), e1) ->
+					let NameAb((NameLiteral(Name(s2, n2)), _), e2) = v2 in
+					let NameLiteral(a) = gen_atom atoms s in
+					let e, _ = swap (Name(s, n)) a e1 in
+					let e', _ = swap (Name(s2, n2)) a e2 in
+					calc_ineq atoms e Eq e'
+			| Ctor(_, (e1, _)) ->
+					let Ctor(_, (e2, _)) = v2 in calc_ineq atoms e1 Eq e2
+			| Pair((e1, _), (e2, _)) ->
+					let Pair((e3, _), (e4, _)) = v2 in
+					(* Pairwise comparison *)
+					let BoolLiteral(b) = calc_ineq atoms e1 Eq e3 in
+					if b then (calc_ineq atoms e2 Eq e4) else BoolLiteral(b)
+			| _ -> BoolLiteral(v1 = v2));;
+
 (* TODO handle precedance correctly *)
-(* Perform a binary operation on two numeric values *)
-let bin_operate v1 op v2 =
+(* Perform a binary operation on two values *)
+let bin_operate atoms v1 op v2 =
   let (v, _) = v1 in
   let (v', p) = v2 in
   match (v, v') with
@@ -81,16 +110,20 @@ let bin_operate v1 op v2 =
       | Div -> (IntLiteral(n1/n2), p)
       | Mult -> (IntLiteral(n1*n2), p)
       | Add -> (IntLiteral(n1+n2), p)
-      | Sub -> (IntLiteral(n1-n2), p))
+      | Sub -> (IntLiteral(n1-n2), p)
+			| _ -> (calc_ineq atoms (IntLiteral n1) op (IntLiteral n2), p))
   | RealLiteral(n1), RealLiteral(n2) ->
       (match op with
       | Div -> (RealLiteral(n1 /. n2), p)
       | Mult -> (RealLiteral(n1 *. n2), p)
       | Add -> (RealLiteral(n1 +. n2), p)
-      | Sub -> (RealLiteral(n1 -. n2), p))
-  | _ ->
-      raise (Run_time_error ("Trying to perform arithmetic operation on"^
-        " non-numeric types"));;
+      | Sub -> (RealLiteral(n1 -. n2), p)
+			| _ -> (calc_ineq atoms (RealLiteral n1) op (RealLiteral n2), p))
+	| StringLiteral(s1), StringLiteral(s2) ->
+			(match op with
+			| Concat -> (StringLiteral(s1 ^ s2), p)
+			| _ -> (calc_ineq atoms (StringLiteral s1) op (StringLiteral s2), p))
+  | _ -> (calc_ineq atoms v op v', p);;
 
 (* Perform a unary operation on a numeric value *)
 let un_operate u v =
@@ -105,6 +138,8 @@ let un_operate u v =
   | _ ->
       raise (Run_time_error ("Trying to perform unary operation on"^
         " non-numeric type"));;
+
+let no = ref 0;;
 
 (*********************************************************************************
  * We assumme that the typechecker has been run on the expressions passed to the
@@ -131,8 +166,8 @@ let rec exp_state atoms env fs ast =
     | Ctor(s, (e, p1)), p2 ->
         exp_state atoms env ((Ctor(s, (EmptySlot, p1)), p2)::fs) (e, p1)
     | Fresh(s), p -> let a = gen_atom atoms s in val_state atoms env fs (a, p)
-		| EqTest((e1, p1), e2), p2 ->
-				exp_state atoms env ((EqTest((EmptySlot, p1), e2), p2)::fs) (e1, p1)
+		(*| EqTest((e1, p1), e2), p2 ->
+				exp_state atoms env ((EqTest((EmptySlot, p1), e2), p2)::fs) (e1, p1)*)
     | If((e1, p1), e2, e3), p2 ->
         exp_state atoms env ((If((EmptySlot, p1), e2, e3), p2)::fs) (e1, p1)
     | Swap((e1, p1), e2, e3), p2 ->
@@ -169,10 +204,10 @@ and val_state atoms env fs ast =
   | [] -> (env, ast)
   | (EofFunc, _)::xs -> val_state atoms (List.tl env) xs ast
   | (Ctor(s, (EmptySlot, _)), p)::xs -> val_state atoms env xs (Ctor(s, ast), p)
-	| (EqTest((EmptySlot, _), (e, p1)), p2)::xs ->
+	(*| (EqTest((EmptySlot, _), (e, p1)), p2)::xs ->
 			exp_state atoms env ((EqTest(ast, (EmptySlot, p1)), p2)::xs) (e, p1)
 	| (EqTest((v1, _), (EmptySlot, _)), p)::xs ->
-			let v2, _ = ast in exp_state atoms env xs (BoolLiteral(v1 = v2), p)
+			let v2, _ = ast in val_state atoms env xs (BoolLiteral(v1 = v2), p)*)
   | (If((EmptySlot, _), (e1, p1), e2), p2)::xs ->
 			let BoolLiteral(b), _ = ast in
       exp_state atoms env xs (if b then (e1, p1) else e2)
@@ -194,7 +229,7 @@ and val_state atoms env fs ast =
   | (BinaryOp((EmptySlot, _), b, (e, p1)), p2)::xs ->
       exp_state atoms env ((BinaryOp(ast, b, (EmptySlot, p1)), p2)::xs) (e, p1)
   | (BinaryOp(v, b, (EmptySlot, _)), _)::xs ->
-      val_state atoms env xs (bin_operate v b ast)
+      val_state atoms env xs (bin_operate atoms v b ast)
   | (UnaryOp(u, (EmptySlot, _)), _)::xs ->
       val_state atoms env xs (un_operate u ast)
   | (App((EmptySlot, _), (e, p1)), p2)::xs ->
@@ -202,6 +237,7 @@ and val_state atoms env fs ast =
   | (App((Lambda(s, t, e, en), _), (EmptySlot, _)), p)::xs ->
       exp_state atoms (((s, ast)::en)::env) ((EofFunc, p)::xs) e
   | (App((RecFunc(s1, s2, t1, t2, e, en), p1), (EmptySlot, _)), p2)::xs ->
+			(*print_string ("Call #"^(no := !no+1; string_of_int !no)^"\n");*)
       exp_state atoms
         (((s1, (RecFunc(s1, s2, t1, t2, e, en), p1))::(s2, ast)::en)::env)
         ((EofFunc, p2)::xs) e
@@ -233,7 +269,10 @@ and match_state atoms env ms fs is_top ast =
       else if (List.length ms) > 0 then
         (assert ((List.length ms) == 1); (* ms should have 0 or 1 elements *)
         let (br, v)::_ = ms in
-				(* Need to discard env and EofFunc which we added in match_init *)
+				(* Need to discard env and EofFunc which we added in match_init.
+					 match_init must have been called since ms not empty and therefore we must
+					 be pattern-matching within a Match expression.
+				*)
         val_state atoms (List.tl env) ((Match((EmptySlot, p1), br), p2)::(List.tl xs)) v)
       else
         raise (Run_time_error ("Match failed: could not match constructor "^s2))

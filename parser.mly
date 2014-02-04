@@ -32,8 +32,6 @@
 %token L_PAREN R_PAREN
 %token DONT_CARE  /* _ */
 %token EQUAL      /* = */
-%token LT         /* < */
-%token GT         /* > */
 %token COMMA      /* , */
 %token DBL_LT     /* << */
 %token DBL_GT     /* >> */
@@ -128,8 +126,8 @@ ctor:
 ;
 
 ctor_list:
-  | ctor { "\n  | " ^ $1 }
-  | ctor_list COMMA ctor { $1 ^ "\n  | " ^ $3 }
+  | ctor { "\n  " ^ $1 }
+  | ctor_list COMMA ctor { $1 ^ ",\n  " ^ $3 }
 ;
 
 type_name:
@@ -195,7 +193,7 @@ sub_exp:
       with
       | Not_found -> (App((Id($1), get_pos 1), $2), get_pos 1)
     }
-	| exp EQUAL exp { (EqTest($1, $3), get_pos 1) }
+	| exp EQUAL exp { (BinaryOp($1, Eq, $3), get_pos 1) }
   | INT { (IntLiteral($1), get_pos 1) }
   | REAL { (RealLiteral($1), get_pos 1) }
   | BOOL { (BoolLiteral($1), get_pos 1) }
