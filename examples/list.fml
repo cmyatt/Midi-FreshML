@@ -1,0 +1,31 @@
+
+type lst where
+  Nil : unit -> lst,
+  Hd : int * lst -> lst;
+
+let make(n : int) : lst =
+  if n <= 0 then Hd(0, Nil())
+  else Hd(n, make(n-1));
+
+let sum(xs : lst) : int =
+  match xs with
+  | Nil _ -> 0
+  | Hd(n, xs) -> n + (sum xs);
+
+let map(x : (int -> int) * lst) : lst =
+  let (f, xs) = x in
+  match xs with
+  | Nil _ -> Nil ()
+  | Hd(n, xs) -> Hd(f n, map(f, xs));
+
+let filter(x : (int -> bool) * lst) : lst =
+  let (p, xs) = x in
+  match xs with
+  | Nil _ -> Nil ()
+  | Hd(n, xs) -> if (p n) then Hd(n, filter (p, xs)) else filter(p, xs);
+
+let ten = make 10;
+let s = sum ten;
+let dbl = map((fun (n : int) -> n+n), ten);
+let five = filter((fun (n : int) -> n <= 5), ten);
+

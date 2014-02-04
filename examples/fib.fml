@@ -1,0 +1,9 @@
+
+let fib(x : int) : int =
+	if x <= 1 then 1
+	else (fib (x-2)) + (fib (x-1));
+
+(*let f19 = fib 19;		(* 13,529 calls *)*)
+(*let f20 = fib 20;		(* 21,891 calls *)*)
+let f21 = fib 21;			(* 26,878 calls and then stack overflow *)
+

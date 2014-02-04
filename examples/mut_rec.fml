@@ -1,0 +1,32 @@
+(***************************************************
+	
+	Mutual recursion in Midi-FreshML.
+
+	Chris Myatt
+	2014-04-02
+
+****************************************************)
+
+(* Want to use b, but don't yet know about it, so
+ * take it as an argument later on.
+ *)
+let a(f : int -> int) : int -> int =
+	fun (y : int) ->
+		if y < 10 then y + f(y)
+		else (if y < 20 then y else (a f) (y - 1));
+
+(* This can refer to a as normal since once we get
+ * here both a and b will be in the top-level env.
+ *)
+let b(x : int) : int =
+	if x > 10 then x + ((a b) x)
+	else (if x > 20 then x else b(x + 1));
+
+(* Always going to use b in a, so override the
+ * value bound to a with this.
+ *)
+let a = a b;
+
+a 9;
+b 13;
+

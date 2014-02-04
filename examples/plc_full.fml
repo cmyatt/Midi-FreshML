@@ -53,17 +53,17 @@ let lookup(x : var * tyenv) : ty =
   | Nil _ -> Error()
   | Hd((v', t'), env) -> if v = v' then t' else lookup(v, env);
 
-let subst = fun (a : tyvar) ->
-  fun (t : ty) ->
-    (* Capture-avoiding substitution of types for type variables in types *)
-    let sub(t' : ty) : ty =
-      match t' with
-      | Tyvar b -> if a = b then t else Tyvar b
-      | Fun(t1, t2) -> Fun(sub t1, sub t2)
-      | All(<<a>>t1) -> All(<<a>>(sub t1))
-        (* note that a is automatically fresh for t, so we
-           avoid "capture" in this case! *)
-    in sub;
+(* Capture-avoiding substitution of types for type variables in types *)
+let subst = fun (x : tyvar * (ty * ty)) ->
+	let (a, (t, t')) = x in
+	let sub(t' : ty) : ty =
+		match t' with
+		| Tyvar b -> if a = b then t else Tyvar b
+		| Fun(t1, t2) -> Fun(sub t1, sub t2)
+		| All(<<a>>t1) -> All(<<a>>(sub t1))
+			(* note that a is automatically fresh for t, so we
+				 avoid "capture" in this case! *)
+	in sub t';
 
 let typ(env : tyenv) : expr -> ty =
   (* Type of an expression in a typing environment, if any *)
@@ -81,60 +81,88 @@ let typ(env : tyenv) : expr -> ty =
          unnecessary! *)
     | Spec(e, t) ->
         (match (typ env) e with
-        | All(<<a>>t1) -> ((subst a) t) t1
+        | All(<<a>>t1) -> subst (a, (t, t1))
         | _ -> Error());
 
-let apply(x : nf * nf) : nf =
-	let (n, n') = x in
-  let specialize(x : nf * ty) : nf =
-		let (n, t) = x in
-    let sub_ty_nf(x : ty * (tyvar * nf)) : nf =
-			let (t, (a, n)) = x in
-      let sub_ty_ne(x : ty * (tyvar * ne)) : nf =
-				let (t, (a, neu)) = x in
-          (* Substitute a type for a type variable in a neutral form *)
-          match neu with
-          | V x1 -> N(V x1)
-          | A(neu1, n1) -> apply(sub_ty_ne (t, (a, neu1)), sub_ty_nf (t, (a, n1)))
-          | S(neu1, t1) -> specialize(sub_ty_ne (t, (a, neu1)), (((subst a) t) t1))
-      in
-      (* Substitute a type for a type variable in a normal form *)
-      match n with
-      | L(t1, <<x1>>n1) -> L(((subst a) t) t1, <<x1>>(sub_ty_nf (t, (a, n1))))
-      | G(<<a1>>n1) -> G(<<a1>>(sub_ty_nf (t, (a, n1))))
-      | N neu -> sub_ty_ne (t, (a, neu))
-    in
-    (* Specialize a normal form at a type *)
-    match n with
-    | L _ -> Specialize_error()
-    | G(<<a1>>n1) -> sub_ty_nf (t, (a1, n1))
-    | N neu -> N(S(neu, t))
-  in
-  let sub_nf_nf(n' : nf) : var -> (nf -> nf) =
-    fun (x : var) ->
-      fun (n : nf) ->
-        let sub_nf_ne(n' : nf) : var -> (ne -> nf) =
-          fun (x : var) ->
-            fun (neu : ne) ->
-              (* Substitute a normal form for a variable in neutral form *)
-              match neu with
-              | V x1 -> if x = x1 then n' else N(V x1)
-              | A(neu1, n1) -> apply(((sub_nf_ne n') x) neu1, ((sub_nf_nf n') x) n1)
-              | S(neu1, t1) -> specialize(((sub_nf_ne n') x) neu1, t1)
-        in
-        (* Substitute a normal form for a variable in a normal form *)
-        match n with
-        | L(t1, <<x1>>n1) -> L(t1, <<x1>>(((sub_nf_nf n') x) n1))
-        | G(<<a1>>n1) -> G(<<a1>>(((sub_nf_nf n') x) n1))
-        | N neu -> ((sub_nf_ne n') x) neu
-  in
-  (* Apply a normal form to a normal form *)
-  match n with
-  | L(t1, <<x1>>n1) -> ((sub_nf_nf n') x1) n1
-  | G _ -> Apply_error()
-  | N neu -> N(A(neu, n'));
+(*
+	 In the original Fresh OCaml example, the following functions:
 
-(* TODO should fail typechecking since specialize should not be recognised. Get run time error instead. *)
+	 			apply, specialize, sub_ty_nf, sub_ty_ne,
+				sub_nf_nf and sub_nf_nf
+
+	 were mutually recursive curried functions. However Midi-FreshML
+	 doesn't provide built-in support for mutually recursive functions
+	 and the syntax for curried functions is a little verbose.
+
+	 In light of these observations these functions have been altered
+	 slightly to take tuple arguments and to be able to call one another
+	 whilst still being accessible from the top-level.
+
+	 The key idea for this last point was for apply and specialize to
+	 take as their argument a function of the same type as sub_nf_nf
+	 and then to override them with sub_nf_nf passed as that argument
+	 once it was defined:
+
+	 		let apply = apply sub_nf_nf;
+
+		This allows apply and specialize to be used later on without
+		differing too much from the original Fresh OCaml PLC code.
+*)
+
+let apply(f : (nf * (var * nf)) -> nf) : nf * nf -> nf =
+	fun (x : nf * nf) ->
+		let (n, n') = x in
+		(* Apply a normal form to a normal form *)
+		match n with
+		| L(t1, <<x1>>n1) -> f (n', (x1, n1))
+		| G _ -> Apply_error()
+		| N neu -> N(A(neu, n'));
+
+let specialize(f : (nf * (var * nf)) -> nf) : nf * ty -> nf =
+	fun (x : nf * ty) ->
+		let (n, t) = x in
+		let sub_ty_nf(x : ty * (tyvar * nf)) : nf =
+			let (t, (a, n)) = x in
+			let sub_ty_ne(x : ty * (tyvar * ne)) : nf =
+				let (t, (a, neu)) = x in
+				(* Substitute a type for a type variable in a neutral form *)
+				match neu with
+				| V x1 -> N(V x1)
+				| A(neu1, n1) -> (apply f) (sub_ty_ne (t, (a, neu1)), sub_ty_nf (t, (a, n1)))
+				| S(neu1, t1) -> (specialize f) (sub_ty_ne (t, (a, neu1)), (subst (a, (t, t1))))
+			in
+			(* Substitute a type for a type variable in a normal form *)
+			match n with
+			| L(t1, <<x1>>n1) -> L(subst (a, (t, t1)), <<x1>>(sub_ty_nf (t, (a, n1))))
+			| G(<<a1>>n1) -> G(<<a1>>(sub_ty_nf (t, (a, n1))))
+			| N neu -> sub_ty_ne (t, (a, neu))
+		in
+		(* Specialize a normal form at a type *)
+		match n with
+		| L _ -> Specialize_error()
+		| G(<<a1>>n1) -> sub_ty_nf (t, (a1, n1))
+		| N neu -> N(S(neu, t));
+
+let sub_nf_nf(x : nf * (var * nf)) : nf =
+	let (n', (x, n)) = x in 
+	let sub_nf_ne(x : nf * (var * ne)) : nf =
+		let (n', (x, neu)) = x in
+		(* Substitute a normal form for a variable in neutral form *)
+		match neu with
+		| V x1 -> if x = x1 then n' else N(V x1)
+		| A(neu1, n1) -> (apply sub_nf_nf) (sub_nf_ne (n', (x, neu1)), sub_nf_nf (n', (x, n1)))
+		| S(neu1, t1) -> (specialize sub_nf_nf) (sub_nf_ne (n', (x, neu1)), t1)
+	in
+	(* Substitute a normal form for a variable in a normal form *)
+	match n with
+	| L(t1, <<x1>>n1) -> L(t1, <<x1>>(sub_nf_nf (n', (x, n1))))
+	| G(<<a1>>n1) -> G(<<a1>>(sub_nf_nf (n', (x, n1))))
+	| N neu -> sub_nf_ne (n', (x, neu));
+
+let apply = apply sub_nf_nf;
+
+let specialize = specialize sub_nf_nf;
+
 let eval(e : expr) : nf =
   (* Evaluate an expression to beta-normal form (if any) *)
   match e with
@@ -143,8 +171,6 @@ let eval(e : expr) : nf =
   | App(e1, e2) -> apply(eval e1, eval e2)
   | Gen(<<a1>>e1) -> G(<<a1>>(eval e1))
   | Spec(e1, t1) -> specialize(eval e1, t1);
-
-let awd = fun (x : expr * ty) -> let (e1, t1) = x in specialize(eval e1, t1);
 
 let reify_nf(n : nf) : expr =
   let reify_ne(neu : ne) : expr =
@@ -193,7 +219,16 @@ let plc_nil =
   <<x'>>(Lam(Fun(Tyvar a, Fun(Tyvar a', Tyvar a')),
   <<f>>(Var x'))))))));
 
-((typ (Nil ())) plc_nil) = (All(<<a>>a_list));
+((typ (Nil ())) plc_nil) = (All(<<a>>a_list));	(* true *)
+
+let plc_cons =
+	(* /\a. \x : a. \l : a_list. /\a'. \x' : a'. \f : a -> a' -> a'. f x (l a' x' f) *)	
+	Gen(<<a>>(Lam(Tyvar a, <<x>>(Lam(a_list, <<l>>(Gen(<<a'>>(
+		Lam(Tyvar a', <<x'>>(Lam(Fun(Tyvar a, Fun(Tyvar a', Tyvar a')),
+		<<f>>(App(App(Var f, Var x), App(App(Spec(Var l, Tyvar a'),
+		Var x'), Var f))))))))))))));
+
+((typ (Nil ())) plc_cons) = All(<<a>>(Fun(Tyvar a, Fun(a_list, a_list)))); (* true *)
 
 let plc_iter =
 	(* /\a. /\a'. \x' : a'. \f : a -> a' -> a'. \l : a_list. l a' x' f *)
@@ -204,7 +239,7 @@ let plc_iter =
 ((typ (Nil ())) plc_iter) =
 	(All(<<a>>(All(<<a'>>(Fun(Tyvar a',
 					Fun(Fun(Tyvar a, Fun(Tyvar a', Tyvar a')),
-						Fun(a_list, Tyvar a'))))))));
+						Fun(a_list, Tyvar a'))))))));		(* true *)
 
 let tenv =
 	(* [x' |-> a', f |-> a -> a' -> a'] *)
@@ -216,6 +251,28 @@ let nil_lhs =
 	App(App(App(Spec(Spec(plc_iter, Tyvar a),
 	Tyvar a'), Var x'), Var f), Spec(plc_nil, Tyvar a));
 
-((typ tenv) nil_lhs) = Tyvar a';
+((typ tenv) nil_lhs) = Tyvar a';	(* true *)
 
-(*((b_equiv tenv) nil_lhs) (Var x');*)
+((b_equiv tenv) nil_lhs) (Var x');	(* true *)
+
+let tenv' =
+	(* [x |-> a, l |-> a_list, x' |-> a', f |-> a -> a' -> a'] *)
+	Hd((x, Tyvar a), Hd((l, a_list), tenv));
+
+let cons_lhs =
+	(* plc_iter a a' x' f (plc_cons a x l) *)
+	App(App(App(Spec(Spec(plc_iter, Tyvar a),
+		Tyvar a'), Var x'), Var f),
+		App(App(Spec(plc_cons, Tyvar a), Var x), Var l));
+
+((typ tenv') cons_lhs) = Tyvar a';	(* true *)
+
+let cons_rhs =
+	(* f x (plc_iter a a' x' f l) *)
+	App(App(Var f, Var x), App(App(App(Spec(Spec(plc_iter, Tyvar a),
+		Tyvar a'), Var x'), Var f), Var l));
+
+((typ tenv') cons_rhs) = Tyvar a';	(* true *)
+
+((b_equiv tenv') cons_lhs) cons_rhs;	(* true *)
+
