@@ -30,6 +30,7 @@
 %token NAME TYPE WHERE IF THEN ELSE MATCH WITH LET REC FUN IN FRESH SWAP LIST
 %token INT_T REAL_T BOOL_T STRING_T UNIT_T
 %token L_PAREN R_PAREN
+%token HASH				/* # */
 %token DONT_CARE  /* _ */
 %token EQUAL      /* = */
 %token COMMA      /* , */
@@ -64,7 +65,7 @@ program:
   | user_types SEMI { (atoms, $1, []) }
   | top_let SEMI { (atoms, types, [$1]) }
   | exp SEMI { (atoms, types, [$1]) }
-  | error program { $2 }
+	| directive SEMI { (atoms, types, [$1]) }
 ;
 
 user_types:
@@ -229,6 +230,18 @@ top_let:
 branch:
   | BAR pattern ARROW exp { [($2, $4)] }
   | branch BAR pattern ARROW exp { $1 @ [$3, $5] (* TODO consider using a different data structure to avoid costly appends *) }
+;
+
+directive:
+	| HASH ID {
+			match $2 with
+			| "quit" -> (Directive(Quit, []), get_pos 1)
+			| "use" -> (Directive(Use, []), get_pos 1)
+			| _ -> (parse_error ("Unrecognised directive '"^$2^"'"); raise Parse_error);
+		}
+	| directive STRING {
+			let (Directive(d, xs), p) = $1 in (Directive(d, $2::xs), p)
+		}
 ;
 
 %%

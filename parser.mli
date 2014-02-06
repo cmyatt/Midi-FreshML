@@ -21,6 +21,7 @@ type token =
   | UNIT_T
   | L_PAREN
   | R_PAREN
+  | HASH
   | DONT_CARE
   | EQUAL
   | COMMA

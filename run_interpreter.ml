@@ -31,20 +31,35 @@ let rec repl_lexbuf () =
 				leftover := "";
 				s;;
 
-(* TODO Add support for directives, e.g. #quit; and #open <filename>; *)
-
 (* TODO Want to abandon current expr on encountering the first error
  * - Getting too many useless error messages atm
  *)
 
 let rec run get_lexbuf top_lev_env =
+	let env = ref [[]] in
   try
-		let env = ref [[]] in
+		(* Want types, atoms, env and top_lev_env from file evaluation... *)
 		while true do
 			(try
 				let atoms, types, es = Parser.program Lexer.scan (get_lexbuf ()) in
+				Parsing.clear_parser();	(* free memory used by the parser *)
 				(match es with
 				| [] -> ()
+				| (AbSyn.Directive(AbSyn.Quit, xs), p)::[] ->
+						if (List.length xs) = 0 then exit 0
+						else print_string ("[Error] Directive 'quit' does not take any arguments " ^
+							(AbSyn.string_of_pos p) ^ "\n")
+				| (AbSyn.Directive(AbSyn.Use, xs), p)::[] ->
+						if (List.length xs) = 1 then
+							(try
+								let cin = open_in (List.hd xs) in
+								let lb = from_channel cin in
+								env := run (fun () -> lb) top_lev_env
+							with
+							| Sys_error s ->
+									print_string ("[Error] " ^ s ^ " " ^ (AbSyn.string_of_pos p) ^ "\n"))
+						else print_string ("[Error] Directive 'use' expects 1 argument " ^
+								(AbSyn.string_of_pos p) ^ "\n")
 				| (e, p)::[] ->
 					(try
 						let t = TyCheck.get_type types top_lev_env [] (e, p) in
@@ -64,10 +79,11 @@ let rec run get_lexbuf top_lev_env =
 			with
 			| Invalid_argument _ ->
 					(*let pos = lexbuf.lex_curr_p in*)
-					Printf.printf "[Error] Syntax error\n"(* [line %d, col %d]\n pos.pos_lnum (pos.pos_cnum - pos.pos_bol)*)
-			| Parsing.Parse_error -> print_string "[Error] Syntax error\n")
-		done
-  with End_of_file -> ();;
+					Printf.printf "[Error] Syntax error\n"
+					(* [line %d, col %d]\n pos.pos_lnum (pos.pos_cnum - pos.pos_bol)*)
+			| Parsing.Parse_error -> ())(*print_string "[error] syntax error\n"; skip_error get_lexbuf)*)
+		done; !env
+  with End_of_file -> !env;;
 
 let main () =
 	try
@@ -79,7 +95,9 @@ let main () =
 		else
 			(print_string "\tMidi-FreshML version 0.1\n\n";
 			run repl_lexbuf top_level_env)
-  with End_of_file -> print_string "End of file reached.\n"; exit 0;;
+  with
+	| Sys_error s -> print_string (s^"\n"); exit 0
+	| End_of_file -> print_string "End of file reached.\n"; exit 0;;
 
 let _ = Printexc.print main ();;
 

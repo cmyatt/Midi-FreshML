@@ -71,6 +71,7 @@ rule scan = parse
       try let kw = Hashtbl.find keyword_tbl word in if debug then printf "%s\n" word else (); kw with
       | Not_found -> if debug then printf "ID (%s)\n" word else (); ID word
     }
+	| '#' { if debug then printf "HASH\n" else (); HASH }
   | '\"' { cur_str := ""; str_literal lexbuf }
   | '_' { if debug then printf "DONT_CARE\n" else (); DONT_CARE }
   | '+' { if debug then printf "BIN_OP (+)\n" else (); BIN_OP(AbSyn.Add) }
