@@ -262,6 +262,51 @@ and match_state atoms env ms fs is_top ast =
   | (Let(ValBind(DontCareP, _), e), _)::xs -> exp_state atoms env xs e
   | (Let(ValBind(IdP(s), (EmptySlot, _)), e), _)::xs ->
       exp_state atoms (cons (s, ast) env) xs e
+	| (Let(ValBind(IntP(n1), (EmptySlot, p1)), e), p2)::xs ->
+			let IntLiteral(n2), _ = ast in
+			if n1 = n2 then exp_state atoms env xs e
+			else if (List.length ms) > 0 then
+        (assert ((List.length ms) == 1); (* ms should have 0 or 1 elements *)
+        let (br, v)::_ = ms in
+				(* Remark 1.
+					-----------
+					 Need to discard env and EofFunc which we added in match_init.
+					 match_init must have been called since ms not empty and therefore we must
+					 be pattern-matching within a Match expression.
+				*)
+        val_state atoms (List.tl env) ((Match((EmptySlot, p1), br), p2)::(List.tl xs)) v)
+      else
+        raise (Run_time_error ("Match failed: could not match int literal"))
+	| (Let(ValBind(RealP(n1), (EmptySlot, p1)), e), p2)::xs ->
+			let RealLiteral(n2), _ = ast in
+			if n1 = n2 then exp_state atoms env xs e
+			else if (List.length ms) > 0 then
+        (assert ((List.length ms) == 1); (* ms should have 0 or 1 elements *)
+        let (br, v)::_ = ms in
+				(* See remark 1 above *)
+        val_state atoms (List.tl env) ((Match((EmptySlot, p1), br), p2)::(List.tl xs)) v)
+      else
+        raise (Run_time_error ("Match failed: could not match real literal"))
+	| (Let(ValBind(BoolP(b1), (EmptySlot, p1)), e), p2)::xs ->
+			let BoolLiteral(b2), _ = ast in
+			if b1 = b2 then exp_state atoms env xs e
+			else if (List.length ms) > 0 then
+        (assert ((List.length ms) == 1); (* ms should have 0 or 1 elements *)
+        let (br, v)::_ = ms in
+				(* See remark 1 above *)
+        val_state atoms (List.tl env) ((Match((EmptySlot, p1), br), p2)::(List.tl xs)) v)
+      else
+        raise (Run_time_error ("Match failed: could not match bool literal"))
+	| (Let(ValBind(StringP(s1), (EmptySlot, p1)), e), p2)::xs ->
+			let StringLiteral(s2), _ = ast in
+			if s1 = s2 then exp_state atoms env xs e
+			else if (List.length ms) > 0 then
+        (assert ((List.length ms) == 1); (* ms should have 0 or 1 elements *)
+        let (br, v)::_ = ms in
+				(* See remark 1 above *)
+        val_state atoms (List.tl env) ((Match((EmptySlot, p1), br), p2)::(List.tl xs)) v)
+      else
+        raise (Run_time_error ("Match failed: could not match string literal"))
   | (Let(ValBind(CtorP(s1, pat), (EmptySlot, p1)), e), p2)::xs ->
       let Ctor(s2, e'), _ = ast in
       if s1 = s2 then
@@ -269,10 +314,7 @@ and match_state atoms env ms fs is_top ast =
       else if (List.length ms) > 0 then
         (assert ((List.length ms) == 1); (* ms should have 0 or 1 elements *)
         let (br, v)::_ = ms in
-				(* Need to discard env and EofFunc which we added in match_init.
-					 match_init must have been called since ms not empty and therefore we must
-					 be pattern-matching within a Match expression.
-				*)
+				(* See remark 1 above *)
         val_state atoms (List.tl env) ((Match((EmptySlot, p1), br), p2)::(List.tl xs)) v)
       else
         raise (Run_time_error ("Match failed: could not match constructor "^s2))

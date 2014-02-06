@@ -169,6 +169,10 @@ dec:
 pattern:
   | DONT_CARE { DontCareP }
   | ID { IdP($1) }
+	| INT { IntP($1) }
+	| REAL { RealP($1) }
+	| BOOL { BoolP($1) }
+	| STRING { StringP($1) }
   | ID pattern { CtorP($1, $2) }
   | DBL_LT pattern DBL_GT pattern { NameAbsP($2, $4) }
   | UNIT { UnitP }
