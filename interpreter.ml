@@ -97,6 +97,8 @@ let rec calc_ineq atoms v1 op v2 =
 					(* Pairwise comparison *)
 					let BoolLiteral(b) = calc_ineq atoms e1 Eq e3 in
 					if b then (calc_ineq atoms e2 Eq e4) else BoolLiteral(b)
+			| Lambda _ -> raise (Run_time_error "Cannot compare function values")
+			| RecFunc _ -> raise (Run_time_error "Cannot compare function values")
 			| _ -> BoolLiteral(v1 = v2));;
 
 (* TODO handle precedance correctly *)
