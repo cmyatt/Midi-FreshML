@@ -3,8 +3,6 @@ open Lexing;;
 let leftover = ref "";;	(* incomplete exp *)
 let exps = ref [];;			(* completed, but unevaluated exps *)
 
-(* TODO ignore pos when in repl mode. *)
-
 (* Returns a stream containing the next evaulatable chunk of code (i.e. up until ;) *)
 let rec repl_lexbuf () =
 	let exprs =
@@ -38,18 +36,17 @@ let rec repl_lexbuf () =
 let rec run get_lexbuf top_lev_env =
 	let env = ref [[]] in
   try
-		(* Want types, atoms, env and top_lev_env from file evaluation... *)
 		while true do
 			(try
 				let atoms, types, es = Parser.program Lexer.scan (get_lexbuf ()) in
-				Parsing.clear_parser();	(* free memory used by the parser *)
+				Parsing.clear_parser();	(* free memory used by the parser TODO test if has any effect *)
 				(match es with
 				| [] -> ()
-				| (AbSyn.Directive(AbSyn.Quit, xs), p)::[] ->
+				| (AbSyn.Directive(AbSyn.Quit, xs), _, p)::[] ->
 						if (List.length xs) = 0 then exit 0
 						else print_string ("[Error] Directive 'quit' does not take any arguments " ^
 							(AbSyn.string_of_pos p) ^ "\n")
-				| (AbSyn.Directive(AbSyn.Use, xs), p)::[] ->
+				| (AbSyn.Directive(AbSyn.Use, xs), _, p)::[] ->
 						if (List.length xs) = 1 then
 							(try
 								let cin = open_in (List.hd xs) in
@@ -60,10 +57,10 @@ let rec run get_lexbuf top_lev_env =
 									print_string ("[Error] " ^ s ^ " " ^ (AbSyn.string_of_pos p) ^ "\n"))
 						else print_string ("[Error] Directive 'use' expects 1 argument " ^
 								(AbSyn.string_of_pos p) ^ "\n")
-				| (e, p)::[] ->
+				| (e, _, p)::[] ->
 					(try
-						let t = TyCheck.get_type types top_lev_env [] (e, p) in
-						let env', (v, _) = Interpreter.exp_state atoms !env [] (e, p) in
+						let t = TyCheck.get_type types top_lev_env [] (e, [], p) in
+						let env', (v, _, _) = Interpreter.exp_state atoms !env [] (e, [], p) in
 						env := env';
 						(match e with
 						| AbSyn.TopLet(AbSyn.ValBind(pat, _), _) ->
@@ -80,7 +77,7 @@ let rec run get_lexbuf top_lev_env =
 			| Invalid_argument _ ->
 					(*let pos = lexbuf.lex_curr_p in*)
 					Printf.printf "[Error] Syntax error\n"
-					(* [line %d, col %d]\n pos.pos_lnum (pos.pos_cnum - pos.pos_bol)*)
+					(* [line %d, col %d]\n pos.pos_lnum (pos.pos_cnum - pos.pos_bol) *)
 			| Parsing.Parse_error -> ())(*print_string "[error] syntax error\n"; skip_error get_lexbuf)*)
 		done; !env
   with End_of_file -> !env;;

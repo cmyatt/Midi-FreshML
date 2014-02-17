@@ -183,52 +183,52 @@ pattern:
 exp:
 	| sub_exp { $1 }
   | IF exp THEN exp ELSE sub_exp {
-      (If($2, $4, $6), get_pos 1)
+      (If($2, $4, $6), [], get_pos 1)
     }
 ;
 
 sub_exp:
-	| ID { (Id $1, get_pos 1) }
+	| ID { (Id $1, [], get_pos 1) }
   | ID exp {
       try
         let t = Hashtbl.find types $1 in
         (match t with
-        | CtorT _ -> (Ctor($1, $2), get_pos 1)
-        | _ -> (App((Id($1), get_pos 1), $2), get_pos 1))
+        | CtorT _ -> (Ctor($1, $2), [], get_pos 1)
+        | _ -> (App((Id($1), [], get_pos 1), $2), [], get_pos 1))
       with
-      | Not_found -> (App((Id($1), get_pos 1), $2), get_pos 1)
+      | Not_found -> (App((Id($1), [], get_pos 1), $2), [], get_pos 1)
     }
-	| exp EQUAL exp { (BinaryOp($1, Eq, $3), get_pos 1) }
-  | INT { (IntLiteral($1), get_pos 1) }
-  | REAL { (RealLiteral($1), get_pos 1) }
-  | BOOL { (BoolLiteral($1), get_pos 1) }
-  | STRING { (StringLiteral($1), get_pos 1) }
-  | FRESH COLON ID { (Fresh $3, get_pos 1) }
+	| exp EQUAL exp { (BinaryOp($1, Eq, $3), [], get_pos 1) }
+  | INT { (IntLiteral($1), [], get_pos 1) }
+  | REAL { (RealLiteral($1), [], get_pos 1) }
+  | BOOL { (BoolLiteral($1), [], get_pos 1) }
+  | STRING { (StringLiteral($1), [], get_pos 1) }
+  | FRESH COLON ID { (Fresh $3, [], get_pos 1) }
   | SWAP L_PAREN exp COMMA exp R_PAREN IN exp {
-      (Swap($3, $5, $8), get_pos 1)
+      (Swap($3, $5, $8), [], get_pos 1)
     }
   | DBL_LT exp DBL_GT exp {
-      (NameAb($2, $4), get_pos 1)
+      (NameAb($2, $4), [], get_pos 1)
     }
-  | UNIT { (Unit, get_pos 1) }
+  | UNIT { (Unit, [], get_pos 1) }
   | L_PAREN exp COMMA exp R_PAREN {
-      (Pair($2, $4), get_pos 1)
+      (Pair($2, $4), [], get_pos 1)
     }
-  | exp exp { (App($1, $2), get_pos 1) }
-  | MATCH exp WITH branch { (Match($2, $4), get_pos 1) }
-  | LET dec IN exp { (Let($2, $4), get_pos 1) }
+  | exp exp { (App($1, $2), [], get_pos 1) }
+  | MATCH exp WITH branch { (Match($2, $4), [], get_pos 1) }
+  | LET dec IN exp { (Let($2, $4), [], get_pos 1) }
   | FUN L_PAREN ID COLON type_name R_PAREN ARROW exp {
-      (Lambda($3, $5, $8, []), get_pos 1)
+      (Lambda($3, $5, $8, []), [], get_pos 1)
     }
-  | UN_OP exp { (UnaryOp($1, $2), get_pos 1) }
+  | UN_OP exp { (UnaryOp($1, $2), [], get_pos 1) }
   | L_PAREN exp R_PAREN { $2 }
 
-  | exp STAR exp { (BinaryOp($1, Mult, $3), get_pos 1) }
-  | exp BIN_OP exp { (BinaryOp($1, $2, $3), get_pos 1) }
+  | exp STAR exp { (BinaryOp($1, Mult, $3), [], get_pos 1) }
+  | exp BIN_OP exp { (BinaryOp($1, $2, $3), [], get_pos 1) }
 ;
 
 top_let:
-  | LET dec { (TopLet($2, get_pos 2), get_pos 1) }
+  | LET dec { (TopLet($2, get_pos 2), [], get_pos 1) }
 ;
 
 branch:
@@ -239,12 +239,12 @@ branch:
 directive:
 	| HASH ID {
 			match $2 with
-			| "quit" -> (Directive(Quit, []), get_pos 1)
-			| "use" -> (Directive(Use, []), get_pos 1)
+			| "quit" -> (Directive(Quit, []), [], get_pos 1)
+			| "use" -> (Directive(Use, []), [], get_pos 1)
 			| _ -> (parse_error ("Unrecognised directive '"^$2^"'"); raise Parse_error);
 		}
 	| directive STRING {
-			let (Directive(d, xs), p) = $1 in (Directive(d, $2::xs), p)
+			let (Directive(d, xs), pi, p) = $1 in (Directive(d, $2::xs), pi, p)
 		}
 ;
 

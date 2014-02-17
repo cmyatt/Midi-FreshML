@@ -854,7 +854,7 @@ let yyact = [|
     Obj.repr(
 # 185 "parser.mly"
                                  (
-      (If(_2, _4, _6), get_pos 1)
+      (If(_2, _4, _6), [], get_pos 1)
     )
 # 860 "parser.ml"
                : 'exp))
@@ -862,7 +862,7 @@ let yyact = [|
     let _1 = (Parsing.peek_val __caml_parser_env 0 : string) in
     Obj.repr(
 # 191 "parser.mly"
-      ( (Id _1, get_pos 1) )
+      ( (Id _1, [], get_pos 1) )
 # 867 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
@@ -874,10 +874,10 @@ let yyact = [|
       try
         let t = Hashtbl.find types _1 in
         (match t with
-        | CtorT _ -> (Ctor(_1, _2), get_pos 1)
-        | _ -> (App((Id(_1), get_pos 1), _2), get_pos 1))
+        | CtorT _ -> (Ctor(_1, _2), [], get_pos 1)
+        | _ -> (App((Id(_1), [], get_pos 1), _2), [], get_pos 1))
       with
-      | Not_found -> (App((Id(_1), get_pos 1), _2), get_pos 1)
+      | Not_found -> (App((Id(_1), [], get_pos 1), _2), [], get_pos 1)
     )
 # 883 "parser.ml"
                : 'sub_exp))
@@ -886,42 +886,42 @@ let yyact = [|
     let _3 = (Parsing.peek_val __caml_parser_env 0 : 'exp) in
     Obj.repr(
 # 201 "parser.mly"
-                 ( (BinaryOp(_1, Eq, _3), get_pos 1) )
+                 ( (BinaryOp(_1, Eq, _3), [], get_pos 1) )
 # 891 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
     let _1 = (Parsing.peek_val __caml_parser_env 0 : int) in
     Obj.repr(
 # 202 "parser.mly"
-        ( (IntLiteral(_1), get_pos 1) )
+        ( (IntLiteral(_1), [], get_pos 1) )
 # 898 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
     let _1 = (Parsing.peek_val __caml_parser_env 0 : float) in
     Obj.repr(
 # 203 "parser.mly"
-         ( (RealLiteral(_1), get_pos 1) )
+         ( (RealLiteral(_1), [], get_pos 1) )
 # 905 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
     let _1 = (Parsing.peek_val __caml_parser_env 0 : bool) in
     Obj.repr(
 # 204 "parser.mly"
-         ( (BoolLiteral(_1), get_pos 1) )
+         ( (BoolLiteral(_1), [], get_pos 1) )
 # 912 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
     let _1 = (Parsing.peek_val __caml_parser_env 0 : string) in
     Obj.repr(
 # 205 "parser.mly"
-           ( (StringLiteral(_1), get_pos 1) )
+           ( (StringLiteral(_1), [], get_pos 1) )
 # 919 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
     let _3 = (Parsing.peek_val __caml_parser_env 0 : string) in
     Obj.repr(
 # 206 "parser.mly"
-                   ( (Fresh _3, get_pos 1) )
+                   ( (Fresh _3, [], get_pos 1) )
 # 926 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
@@ -931,7 +931,7 @@ let yyact = [|
     Obj.repr(
 # 207 "parser.mly"
                                               (
-      (Swap(_3, _5, _8), get_pos 1)
+      (Swap(_3, _5, _8), [], get_pos 1)
     )
 # 937 "parser.ml"
                : 'sub_exp))
@@ -941,14 +941,14 @@ let yyact = [|
     Obj.repr(
 # 210 "parser.mly"
                           (
-      (NameAb(_2, _4), get_pos 1)
+      (NameAb(_2, _4), [], get_pos 1)
     )
 # 947 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
     Obj.repr(
 # 213 "parser.mly"
-         ( (Unit, get_pos 1) )
+         ( (Unit, [], get_pos 1) )
 # 953 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
@@ -957,7 +957,7 @@ let yyact = [|
     Obj.repr(
 # 214 "parser.mly"
                                   (
-      (Pair(_2, _4), get_pos 1)
+      (Pair(_2, _4), [], get_pos 1)
     )
 # 963 "parser.ml"
                : 'sub_exp))
@@ -966,7 +966,7 @@ let yyact = [|
     let _2 = (Parsing.peek_val __caml_parser_env 0 : 'exp) in
     Obj.repr(
 # 217 "parser.mly"
-            ( (App(_1, _2), get_pos 1) )
+            ( (App(_1, _2), [], get_pos 1) )
 # 971 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
@@ -974,7 +974,7 @@ let yyact = [|
     let _4 = (Parsing.peek_val __caml_parser_env 0 : 'branch) in
     Obj.repr(
 # 218 "parser.mly"
-                          ( (Match(_2, _4), get_pos 1) )
+                          ( (Match(_2, _4), [], get_pos 1) )
 # 979 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
@@ -982,7 +982,7 @@ let yyact = [|
     let _4 = (Parsing.peek_val __caml_parser_env 0 : 'exp) in
     Obj.repr(
 # 219 "parser.mly"
-                   ( (Let(_2, _4), get_pos 1) )
+                   ( (Let(_2, _4), [], get_pos 1) )
 # 987 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
@@ -992,7 +992,7 @@ let yyact = [|
     Obj.repr(
 # 220 "parser.mly"
                                                      (
-      (Lambda(_3, _5, _8, []), get_pos 1)
+      (Lambda(_3, _5, _8, []), [], get_pos 1)
     )
 # 998 "parser.ml"
                : 'sub_exp))
@@ -1001,7 +1001,7 @@ let yyact = [|
     let _2 = (Parsing.peek_val __caml_parser_env 0 : 'exp) in
     Obj.repr(
 # 223 "parser.mly"
-              ( (UnaryOp(_1, _2), get_pos 1) )
+              ( (UnaryOp(_1, _2), [], get_pos 1) )
 # 1006 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
@@ -1016,7 +1016,7 @@ let yyact = [|
     let _3 = (Parsing.peek_val __caml_parser_env 0 : 'exp) in
     Obj.repr(
 # 226 "parser.mly"
-                 ( (BinaryOp(_1, Mult, _3), get_pos 1) )
+                 ( (BinaryOp(_1, Mult, _3), [], get_pos 1) )
 # 1021 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
@@ -1025,14 +1025,14 @@ let yyact = [|
     let _3 = (Parsing.peek_val __caml_parser_env 0 : 'exp) in
     Obj.repr(
 # 227 "parser.mly"
-                   ( (BinaryOp(_1, _2, _3), get_pos 1) )
+                   ( (BinaryOp(_1, _2, _3), [], get_pos 1) )
 # 1030 "parser.ml"
                : 'sub_exp))
 ; (fun __caml_parser_env ->
     let _2 = (Parsing.peek_val __caml_parser_env 0 : 'dec) in
     Obj.repr(
 # 231 "parser.mly"
-            ( (TopLet(_2, get_pos 2), get_pos 1) )
+            ( (TopLet(_2, get_pos 2), [], get_pos 1) )
 # 1037 "parser.ml"
                : 'top_let))
 ; (fun __caml_parser_env ->
@@ -1058,8 +1058,8 @@ let yyact = [|
 # 240 "parser.mly"
            (
 			match _2 with
-			| "quit" -> (Directive(Quit, []), get_pos 1)
-			| "use" -> (Directive(Use, []), get_pos 1)
+			| "quit" -> (Directive(Quit, []), [], get_pos 1)
+			| "use" -> (Directive(Use, []), [], get_pos 1)
 			| _ -> (parse_error ("Unrecognised directive '"^_2^"'"); raise Parse_error);
 		)
 # 1066 "parser.ml"
@@ -1070,7 +1070,7 @@ let yyact = [|
     Obj.repr(
 # 246 "parser.mly"
                     (
-			let (Directive(d, xs), p) = _1 in (Directive(d, _2::xs), p)
+			let (Directive(d, xs), pi, p) = _1 in (Directive(d, _2::xs), pi, p)
 		)
 # 1076 "parser.ml"
                : 'directive))

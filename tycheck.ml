@@ -25,21 +25,6 @@ let failA msg got expected p =
 let failB msg p =
   raise (Type_error (msg^" "^(string_of_pos p)));;
 
-(* Returns true iff given type is a name type *)
-(*
-let is_name_typ types s =
-  (try
-    let t = Hashtbl.find types s in
-    (match t with
-    | DataT s ->
-        (try
-          (String.sub s ((String.length s) - 5) 5) = "_name"
-        with Invalid_argument _ -> false)
-    | _ -> false)
-  with
-  | Not_found -> false);;
-*)
-
 (* Get the number of args to a function. Assumes t is a FuncT *)
 let rec count_args t =
   match t with
@@ -209,7 +194,8 @@ and get_dec_type types top_level env decl ps =
  * env - maps local ids to their types
  *)
 and get_type types top_level env ast =
-  match ast with
+	let (e, _, p) = ast in
+  match (e, p) with
   | Id(s), p ->
       (* Lookup in local env, then top-level env and finally types *)
       (try (lookup s env) with
@@ -241,11 +227,6 @@ and get_type types top_level env ast =
   | Fresh s, p ->
       (try let t = Hashtbl.find types s in t with
       | Not_found -> failB ("Name type "^s^" has not been declared") p)
-	(*| EqTest(e1, e2), p ->
-			(* If same type then boolean otherwise fail *)
-			let t1 = get_type types top_level env e1 in
-			let t2 = get_type types top_level env e2 in
- 			if t1 = t2 then BoolT else failA "" t2 t1 p*)
   | If(e1, e2, e3), p ->
 			let t1 = get_type types top_level env e1 in
 			if t1 = BoolT then
@@ -261,7 +242,7 @@ and get_type types top_level env ast =
         else let t = get_type types top_level env e3 in t
       with
       | Match_failure _ ->
-          (let (e5, _) = e1 in Printf.printf "x : %s\n" (string_of_expr e5);
+          (let (e5, _, _) = e1 in Printf.printf "x : %s\n" (string_of_expr e5);
           failB "Expected name types in swap" p))
   | NameAb(e1, e2), p ->
       (try
@@ -297,9 +278,9 @@ and get_type types top_level env ast =
           if t3 = t2 then (Hashtbl.add top_level s1 (FuncT(t1, t2)); FuncT(t1, t2))
           else failA "Function body type does not match that of function" t3 t2 ps
       | _ -> failB "Rec func declaration does not contain recursive function" ps)
-  | BinaryOp((e1, p1), op, (e2, p2)), p ->
-      let t1 = get_type types top_level env (e1, p1) in
-      let t2 = get_type types top_level env (e2, p2) in
+  | BinaryOp((e1, pi1, p1), op, (e2, pi2, p2)), p ->
+      let t1 = get_type types top_level env (e1, pi1, p1) in
+      let t2 = get_type types top_level env (e2, pi2, p2) in
 			if t1 = t2 then
 				let is_num_typ t =
 					if t = IntT || t = RealT then t else failB "Expected numeric type" p2
@@ -311,17 +292,6 @@ and get_type types top_level env ast =
 					| StringT -> BoolT
 					| _ -> failB "Expected comparable type" p2
 				in
-				let rec is_fun_typ t =
-					match t with
-					| FuncT _ -> failB "Cannot compare function values" p2
-					| CtorT(FuncT(t', _)) -> is_fun_typ t'
-					| DataT s ->
-							(* e1 has already type-checked so we won't get any Match_failures here *)
-							let Ctor(s, e) = e1 in
-							let CtorT(FuncT(t', _)) = Hashtbl.find types s in
-							is_fun_typ t'
-					| _ -> BoolT
-				in
 				(match op with
 				| Add -> is_num_typ t1
 				| Sub -> is_num_typ t1
@@ -331,13 +301,13 @@ and get_type types top_level env ast =
 				| Gteq -> is_ineq_typ t1
 				| Lt -> is_ineq_typ t1
 				| Lteq -> is_ineq_typ t1
-				| Eq -> is_fun_typ t1
+				| Eq -> BoolT
 				| Concat -> if t1 = StringT then StringT else failA "" t1 StringT p2)
 			else failB "Operand types don't match" p2
-  | UnaryOp(op, (e, p1)), p ->
-      let t = get_type types top_level env (e, p1) in
+  | UnaryOp(op, (e, pi, p)), _ ->
+      let t = get_type types top_level env (e, pi, p) in
       (match t with
       | IntT -> IntT
       | RealT -> RealT
-      | _ -> failB "Expected numeric type for unary operation" p1);;
+      | _ -> failB "Expected numeric type for unary operation" p);;
 
