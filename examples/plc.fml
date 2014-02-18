@@ -14,7 +14,16 @@ type typ, exp where
   Gen : <<tyvar>>exp -> exp,
   Spec : exp * typ -> exp;
 
+let (x, y) = (fresh : tyvar, fresh : var);
+let (w, z) = (fresh : tyvar, fresh : var);
+
+let e = Lam(All <<x>>(Tyvar x), <<y>>(Var y));
+let e' = Lam(All <<w>>(Tyvar w), <<z>>(Var z));
+
+e = e';
+
 (* Capture-avoiding substitution *)
+(*
 let subst = fun (x : var) -> fun (e : exp) ->
   let s(e' : exp) : exp =
     match e' with
@@ -32,3 +41,4 @@ let x = 5 in
   let add = fun(pair : real * real) ->
     let (x, y) = pair in x+y in
       let z = add(3., 4.) in x+6;
+*)

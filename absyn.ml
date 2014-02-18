@@ -21,7 +21,7 @@ type directive =
 	| Use;;
 
 (* string is for the type, int for the value *)
-type name = Name of string * int;;
+type name = string * int;;
 
 (* A delayed permutation (list of swaps to apply) *)
 type permutation = (name * name) list;;
@@ -201,7 +201,7 @@ and string_of_expr e =
   | RealLiteral(x) -> clip_str (string_of_float x)
   | BoolLiteral(x) -> clip_str (string_of_bool x)
   | StringLiteral(s) -> clip_str ("\""^s^"\"")
-  | NameLiteral(Name(s, n)) -> clip_str (s^"_"^(string_of_int n))
+  | NameLiteral(s, n) -> clip_str (s^"_"^(string_of_int n))
   | Ctor(s, (e, _, _)) -> clip_str (s^" "^(string_of_expr e))
   | Fresh(s) -> clip_str ("(fresh : "^s^")")
   | If((e1, _, _), (e2, _, _), (e3, _, _)) ->

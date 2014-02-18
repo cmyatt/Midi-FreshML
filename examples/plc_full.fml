@@ -70,7 +70,7 @@ let typ(env : tyenv) : expr -> ty =
   fun (e : expr) ->
     match e with
     | Var x -> lookup(x, env)
-    | Lam(t, <<x>>e) -> Fun(t, (typ(cons((x, t), env))) e)
+    | Lam(t, <<x>>e) -> Fun(t, (typ (cons((x, t), env))) e)
     | App(e1, e2) ->
         (match (typ env) e1 with
         | Fun(t1, t2) -> if t1 = ((typ env) e2) then t2 else Error()
@@ -219,7 +219,13 @@ let plc_nil =
   <<x'>>(Lam(Fun(Tyvar a, Fun(Tyvar a', Tyvar a')),
   <<f>>(Var x'))))))));
 
-((typ (Nil ())) plc_nil) = (All(<<a>>a_list));	(* true *)
+let t = ((typ (Nil ())) plc_nil);
+
+let u = (All(<<a>>a_list));
+
+(*
+t = u;	(* true *)
+*)
 
 let plc_cons =
 	(* /\a. \x : a. \l : a_list. /\a'. \x' : a'. \f : a -> a' -> a'. f x (l a' x' f) *)	
@@ -228,7 +234,9 @@ let plc_cons =
 		<<f>>(App(App(Var f, Var x), App(App(Spec(Var l, Tyvar a'),
 		Var x'), Var f))))))))))))));
 
+(*
 ((typ (Nil ())) plc_cons) = All(<<a>>(Fun(Tyvar a, Fun(a_list, a_list)))); (* true *)
+*)
 
 let plc_iter =
 	(* /\a. /\a'. \x' : a'. \f : a -> a' -> a'. \l : a_list. l a' x' f *)
@@ -236,10 +244,12 @@ let plc_iter =
 		Lam(Fun(Tyvar a, Fun(Tyvar a', Tyvar a')), <<f>>(Lam(a_list,
 			<<l>>(App(App(Spec(Var l, Tyvar a'), Var x'), Var f))))))))));
 
+(*
 ((typ (Nil ())) plc_iter) =
 	(All(<<a>>(All(<<a'>>(Fun(Tyvar a',
 					Fun(Fun(Tyvar a, Fun(Tyvar a', Tyvar a')),
 						Fun(a_list, Tyvar a'))))))));		(* true *)
+*)
 
 let tenv =
 	(* [x' |-> a', f |-> a -> a' -> a'] *)
@@ -251,9 +261,11 @@ let nil_lhs =
 	App(App(App(Spec(Spec(plc_iter, Tyvar a),
 	Tyvar a'), Var x'), Var f), Spec(plc_nil, Tyvar a));
 
+(*
 ((typ tenv) nil_lhs) = Tyvar a';	(* true *)
 
 ((b_equiv tenv) nil_lhs) (Var x');	(* true *)
+*)
 
 let tenv' =
 	(* [x |-> a, l |-> a_list, x' |-> a', f |-> a -> a' -> a'] *)
@@ -265,14 +277,23 @@ let cons_lhs =
 		Tyvar a'), Var x'), Var f),
 		App(App(Spec(plc_cons, Tyvar a), Var x), Var l));
 
+(*
 ((typ tenv') cons_lhs) = Tyvar a';	(* true *)
+*)
+
+let i = 0;
+let j = 0;
 
 let cons_rhs =
 	(* f x (plc_iter a a' x' f l) *)
 	App(App(Var f, Var x), App(App(App(Spec(Spec(plc_iter, Tyvar a),
 		Tyvar a'), Var x'), Var f), Var l));
 
-((typ tenv') cons_rhs) = Tyvar a';	(* true *)
+let i = ((typ tenv') cons_rhs);
 
+i = Tyvar a';	(* true *)
+
+(*
 ((b_equiv tenv') cons_lhs) cons_rhs;	(* true *)
+*)
 

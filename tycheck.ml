@@ -213,7 +213,7 @@ and get_type types top_level env ast =
   | RealLiteral _, _ -> RealT
   | BoolLiteral _, _ -> BoolT
   | StringLiteral _, _ -> StringT
-  | NameLiteral(Name(s, _)), _ -> NameT(s)
+  | NameLiteral(s, _), _ -> NameT(s)
   | Ctor(s, e), p ->
       (try
         let CtorT(FuncT(t1, t2)) = Hashtbl.find types s in
