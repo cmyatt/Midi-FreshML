@@ -46,6 +46,7 @@ let gen_atom atoms s =
   try
     let n = Hashtbl.find atoms s in
     Hashtbl.add atoms s (n+1);
+		(*Printf.printf "Generating new %s atom: %d\n" s (n+1);*)
     NameLiteral(s, n)
   with Not_found -> raise (Run_time_error ("Invalid name type: "^s));;
 
@@ -78,7 +79,13 @@ and swap_env a1 a2 env = List.map (fun (x, v) -> (x, swap a1 a2 v)) xs;;
 *)
 
 (* Add the permutation pi to the value e *)
-let push pi e = let (e', pi', ps) = e in (e', pi' @ pi, ps);;
+let push pi e =
+	let (e', pi', ps) = e in
+	(*match e' with
+	| NameAb(NameLiteral(s, n), e) -> (* generate new atoms, push and then push pi *)
+			let a' = gen_atom atoms s in
+	*)		
+	(e', pi' @ pi, ps);;
 
 (* Apply permutation pi to name a *)
 let permute pi a =
@@ -89,7 +96,7 @@ let permute pi a =
  * Pushes the permutation attached to the given expression through the first
  * level of its structure, making the outermost constructor manifest.
  *)
-let push_perm v =
+let push_perm atoms v =
 	let permute_env pi env = List.map (fun (x, v) -> (x, push pi v)) env in
 	let (e, pi, ps) = v in
 	match e with
@@ -111,6 +118,8 @@ let push_perm v =
 
 (* TODO Only Compound values should have perms, everything else can match against [] *)
 
+(* TODO When we return a NameAbs value, have applied perm to bound name, but seem to discard it for body... *)
+
 let rec calc_ineq atoms v1 op v2 =
 	match op with
 	(* Type checking ensures that for <, <=, > and >=, v1 and v2 are int, real or string literals *)
@@ -124,24 +133,30 @@ let rec calc_ineq atoms v1 op v2 =
 					let NameAb((NameLiteral(s2, n2), [], _), d2) = v2 in
 					let NameLiteral(a) = gen_atom atoms s1 in
 					let pi, pi' = [(s1, n1), a], [(s2, n2), a] in
-					let (x, _, _), (y, _, _) = (push_perm (push pi e2)), (push_perm (push pi' d2)) in
+					let (x, _, _), (y, _, _) = (push_perm atoms (push pi e2)), (push_perm atoms (push pi' d2)) in
 					calc_ineq atoms x Eq y
-			| Ctor(_, e) ->
-					let Ctor(_, e') = v2 in 
-					let (e1, _, _) = push_perm e in
-					let (e2, _, _) = push_perm e' in
-					calc_ineq atoms e1 Eq e2
+			| Ctor(s1, e) ->
+					let Ctor(s2, e') = v2 in 
+					if s1 = s2 then
+						let (e1, _, _) = push_perm atoms e in
+						let (e2, _, _) = push_perm atoms e' in
+						calc_ineq atoms e1 Eq e2
+					else BoolLiteral(false)
 			| Pair(e, e') ->
 					let Pair(d, d') = v2 in
-					let (e1, _, _) = push_perm e in
-					let (e2, _, _) = push_perm e' in
-					let (d1, _, _) = push_perm d in
-					let (d2, _, _) = push_perm d' in
+					let (e1, _, _) = push_perm atoms e in
+					let (e2, _, _) = push_perm atoms e' in
+					let (d1, _, _) = push_perm atoms d in
+					let (d2, _, _) = push_perm atoms d' in
 					(* Pairwise comparison *)
 					let BoolLiteral(b) = calc_ineq atoms e1 Eq d1 in
 					if b then (calc_ineq atoms e2 Eq d2) else BoolLiteral(b)
 			| Lambda _ -> raise (Run_time_error "Cannot compare function values")
 			| RecFunc _ -> raise (Run_time_error "Cannot compare function values")
+			(*| NameLiteral(s1, n1) ->
+					let NameLiteral(s2, n2) = v2 in
+					Printf.printf "name eq: (%s, %d) = (%s, %d)\n" s1 n1 s2 n2;
+					BoolLiteral(n1 = n2)*)
 			| _ -> BoolLiteral(v1 = v2));;
 
 (* Perform a binary operation on two values
@@ -151,8 +166,8 @@ let rec calc_ineq atoms v1 op v2 =
 (* TODO update semantics to apply cf(-) here *)
 (* TODO handle precedance correctly *)
 let bin_operate atoms v1 op v2 =
-  let (v, _, _) = push_perm v1 in
-  let (v', _, p) = push_perm v2 in
+  let (v, _, _) = push_perm atoms v1 in
+  let (v', _, p) = push_perm atoms v2 in
 	match (v, v') with
 	| IntLiteral(n1), IntLiteral(n2) ->
 			(match op with
@@ -177,7 +192,7 @@ let bin_operate atoms v1 op v2 =
 (* Perform a unary operation on a numeric value *)
 (* TODO update semantics to call cf(-) here *)
 let un_operate op v =
-  let (v', _, p) = push_perm v in
+  let (v', _, p) = v in		(* No need to call push_perm since it will have no effect on numeric literals *)
   match v' with
   | IntLiteral(n) ->
       (match op with
@@ -218,7 +233,14 @@ let rec exp_state atoms env fs ast =
 		let (e, [], ps) = ast in
 		match e with
 		| Id(s) ->
-				(try val_state atoms env fs (push_perm (lookup s env)) with
+				(try
+					(*(let (v, pi, p) = lookup s env in
+					if (List.length pi) > 100000 then
+						(print_string ("Looking up (" ^ s ^ ", " ^ (string_of_exp (v, pi, p)) ^ ") in env ==> ");
+						print_string ((string_of_exp (push_perm atoms (v, pi, p))) ^ "\n"))
+					else ());*)
+					val_state atoms env fs (push_perm atoms (lookup s env))
+				with
 				Not_found -> raise (Run_time_error ("Id "^s^" not found in environment")))
 		| Ctor(s, e') ->
 				exp_state atoms env ((Ctor(s, empty e'), [], ps)::fs) e'
@@ -269,9 +291,9 @@ and val_state atoms env fs ast =
 		| Swap(a, (EmptySlot, [], _), e) ->
 				exp_state atoms env ((Swap(a, ast, empty e), [], ps)::xs) e
 		| Swap(x, y, (EmptySlot, [], _)) ->
-				let NameLiteral(a1), _, _ = push_perm x in
-				let NameLiteral(a2), _, _ = push_perm y in
-				val_state atoms env xs (push_perm (push [(a1, a2)] ast))
+				let NameLiteral(a1), _, _ = push_perm atoms x in
+				let NameLiteral(a2), _, _ = push_perm atoms y in
+				val_state atoms env xs (push_perm atoms (push [(a1, a2)] ast))
 		| NameAb((EmptySlot, [], _), e1) ->
 				exp_state atoms env ((NameAb(ast, empty e1), [], ps)::xs) e1
 		| NameAb(a, (EmptySlot, [], _)) ->
@@ -330,6 +352,10 @@ and match_state atoms env ms fs is_top ast =
   match e with
   | Let(ValBind(DontCareP, _), e) -> exp_state atoms env xs e
   | Let(ValBind(IdP(s), (EmptySlot, [], _)), e) ->
+			(*(let (_, pi, _) = ast in
+			if (List.length pi) > 100000 then
+				print_string ("Adding: (" ^ s ^ ", " ^ (string_of_exp ast) ^ ") to env\n")
+			else ());*)
       exp_state atoms (cons (s, ast) env) xs e
 	| Let(ValBind(IntP(n1), (EmptySlot, [], p)), e) ->
 			let IntLiteral(n2), _, _ = ast in handle_literal n1 n2 p e
@@ -340,7 +366,7 @@ and match_state atoms env ms fs is_top ast =
 	| Let(ValBind(StringP(s1), (EmptySlot, [], p)), e) ->
 			let StringLiteral(s2), _, _ = ast in handle_literal s1 s2 p e
   | Let(ValBind(CtorP(s1, pat), (EmptySlot, [], p)), e) ->
-      let Ctor(s2, e'), [], _ = push_perm ast in
+      let Ctor(s2, e'), [], _ = push_perm atoms ast in
       if s1 = s2 then
         match_state atoms env ms ((Let(ValBind(pat, (EmptySlot, [], p)), e), [], ps)::xs)
 					is_top e'
@@ -350,17 +376,39 @@ and match_state atoms env ms fs is_top ast =
         val_state atoms (List.tl env) ((Match((EmptySlot, [], p), br), [], ps)::(List.tl xs)) v)
       else
         raise (Run_time_error ("Match failed: could not match constructor "^s2))
+	| Let(ValBind(NameAbsP(DontCareP, pat), (EmptySlot, [], p1)), e) ->
+			let NameAb((NameLiteral(s, n), [], p2), v), pi, p3 = ast in
+			let NameLiteral(a') = gen_atom atoms s in
+			let v' = push [a', (s, n)] (push pi v) in
+			let e' = e in
+			match_state atoms env ms
+				((Let(ValBind(pat, (EmptySlot, [], p1)), e'), [], ps)::xs) is_top v'
 	| Let(ValBind(NameAbsP(IdP(x), pat), (EmptySlot, [], p1)), e) ->
 			let NameAb((NameLiteral(s, n), [], p2), v), pi, p3 = ast in
 			let NameLiteral(a') = gen_atom atoms s in
-			let v' = push [(s, n), a'] (push pi v) in
-			let e' = if is_top then (NameAb((NameLiteral(a'), [], p2), v'), [], p3) else e in
+			(* Add a perm to freshen all bound names BEFORE pushing the existing perm into
+			   the abstraction body. *)
+			let v' = push pi (push [a', (s, n)] v) in
+			(* XXX But this name abs might be nested somewhere inside e - don't want to replace
+						 all of e if is_top, only the name abs part.
+
+				 Solution: return stale value and alter string_of_expr code to normalise
+				 					 all name values - e.g. increment counter at each bind, leave
+									 free names as-is (will be correct since not bound and therefore
+									 will not have been freshened).
+
+				 OR: since user doesn't care about actual values, just report stale values.
+				 		 Not very nice when evaluate ids bound in the pattern and get different
+						 values, bu it does save a lot of work and doesn't alter functionality.
+						 YES, GO WITH THIS SECOND OPTION.
+			*)
+			let e' = e in (*if is_top then (NameAb((NameLiteral(a'), [], p2), v'), [], p3) else e in*)
 			match_state atoms (cons (x, (NameLiteral(a'), [], p2)) env) ms
 				((Let(ValBind(pat, (EmptySlot, [], p1)), e'), [], ps)::xs) is_top v'
   | Let(ValBind(UnitP, _), e) -> exp_state atoms env xs e
   | Let(ValBind(ProdP(pat1, pat2), (EmptySlot, [], p1)), e) ->
 			(* TODO Update dynamic semantics for MATCH *)
-      let Pair(v1, v2), [], _ = push_perm ast in
+      let Pair(v1, v2), [], _ = push_perm atoms ast in
       match_state atoms env ms
         ((Let(ValBind(pat1, (EmptySlot, [], p1)),
           (Let(ValBind(pat2, v2), e), [], ps)), [], ps)::xs) is_top v1

@@ -123,7 +123,7 @@ let rec bind_val types tbl pat t ps =
       | _ -> failB "Expression is not a name abstraction" ps)
   | NameAbsP(DontCareP, p) ->
       (match t with
-      | NameAbT(NameT(s2), t1) -> bind_val types tbl p t1 ps
+      | NameAbT(NameT(s2), t1) -> let _ = bind_val types tbl p t1 ps in t
       | _ -> failB "Expression is not a name abstraction" ps)
   | NameAbsP _ ->
       failB ("Unexpected pattern in name abstraction binding position. "^
