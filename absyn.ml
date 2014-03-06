@@ -186,6 +186,7 @@ let string_of_perm xs =
 	in
 		if (List.length xs) > 0 then ("[" ^ (strp xs) ^ "]") else "";;
 
+(*
 let push pi e = let (e', pi', ps) = e in (e', pi' @ pi, ps);;
 
 (* Apply permutation pi to name a *)
@@ -209,6 +210,7 @@ let push_perm v =
 	| NameAb((NameLiteral(a), [], p), v) ->
 			(NameAb((NameLiteral(permute pi a), [], p), push pi v), [], ps)
 	| Pair(e1, e2) -> (Pair(push pi e1, push pi e2), [], ps);;
+*)
 
 let rec string_of_dec dec =
   match dec with
