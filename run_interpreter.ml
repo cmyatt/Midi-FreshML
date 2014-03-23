@@ -1,10 +1,7 @@
 open Interpreter;;
-open TyCheck;;
 open Lexing;;
-open AbSyn;;
-open List;;
-open Str;;
 
+(*
 let leftover = ref "";;	(* incomplete exp *)
 let exps = ref [];;			(* completed, but unevaluated exps *)
 
@@ -87,6 +84,7 @@ let rec run get_lexbuf top_lev_env delay_perms =
 			| Parsing.Parse_error -> ())(*print_string "[error] syntax error\n"; skip_error get_lexbuf)*)
 		done; !env
   with End_of_file -> !env;;
+*)
 
 let main () =
 	try

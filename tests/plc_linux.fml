@@ -15,27 +15,25 @@ type typ, exp where
   Spec : exp * typ -> exp;
 
 (* Capture-avoiding substitution *)
-let subst = fun (x : var) -> fun (e : exp) ->
-  let s(e' : exp) : exp =
-    match e' with
-    | Var y -> if x = y then e else e'
-    | Lam(t, <<y>>z) -> Lam(t, <<y>>(s z))
-    | App(y, z) -> App(s y, s z)
-    | Gen(<<t>>y) -> Gen(<<t>>(s y))
-    | Spec(y, t) -> Spec(s y, t)
-  in s;
+(* Substitute e for x in e' *)
+let subst = fun (x : var) ->
+	fun (e : exp) ->
+		let s(e' : exp) : exp =
+			match e' with
+			| Var y -> if x = y then e else e'
+			| Lam(t, <<y>>z) -> Lam(t, <<y>>(s z))
+			| App(y, z) -> App(s y, s z)
+			| Gen(<<t>>y) -> Gen(<<t>>(s y))
+			| Spec(y, t) -> Spec(s y, t)
+		in s;
 
 let (x, y) = (fresh : var, fresh : var);
 
-let e = ((subst x) Var(y)) Var(x);
+let v = Var x;
 
-let inc = fun(x : int) -> x+1;
+let sub = subst y;
 
-let x = 5 in
-  let add = fun(pair : real * real) -> let (x, y) = pair in x+y
-	in
-  let z = add(3., 4.) in z+x+6+2;
+let e = (sub v) (Var y);
 
-let awd = inc;
+let e' = (sub v) (Lam (Tyvar (fresh : tyvar), <<y>>(Var y)));
 
-awd 6;
