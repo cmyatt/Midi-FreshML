@@ -1,5 +1,5 @@
 # About
-Midi-FreshML is a functional ML-like language with additional features for metaprogramming. It is based on [Fresh OCaml] (http://www.fresh-ocaml.org), an extended version of OCaml, which was developed by Mark Shinwell. Midi-FreshML is being developed as part of my part II project for the [Cambridge University Computer Science tripos] (http://www.cl.cam.ac.uk).
+Midi-FreshML is a functional ML-like language with additional features for metaprogramming. It is based on [Fresh OCaml] (http://www.fresh-ocaml.org), an extended version of OCaml, which was developed by Mark Shinwell. Midi-FreshML is being developed as part of my part II project for the [Cambridge University Computer Science tripos] (http://www.cl.cam.ac.uk). The typing rules and dynamic semantics can be found in `language_spec/`.
 
 # Installing
 Midi-FreshML builds with Ocaml version 3.12.1. Other versions have not been tested.
