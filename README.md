@@ -5,5 +5,5 @@ Midi-FreshML is a functional ML-like language with additional features for metap
 Midi-FreshML builds with Ocaml version 3.12.1. Other versions have not been tested.
 To build it, checkout the repo and run `make`.
 
-To build the benchmark used for testing the performance of delayed permutations you will need to install the [OCaml Benchmark module] (ocaml-benchmark.forge.ocamlcore.org), and then run `make bench`.
+To build the benchmark used for testing the performance of delayed permutations you will need to install the [OCaml Benchmark module] (http://ocaml-benchmark.forge.ocamlcore.org), and then run `make bench`.
 
