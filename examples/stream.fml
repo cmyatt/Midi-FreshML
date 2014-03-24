@@ -6,7 +6,7 @@ type stream where
 
 (* Generate the next element in the stream *)
 let next = fun(s : stream) ->
-	let Str(_, f) = s in f ();
+  let Str(_, f) = s in f ();
 
 (* Returns a generator function which increments by 1 each time *)
 let inc(x : int) : (unit -> stream) =
@@ -15,18 +15,18 @@ let inc(x : int) : (unit -> stream) =
 (* Stream of natural numbers *)
 let s1 = Str(0, inc 1);
 
-next s1;								(* = Str(1, inc 2) *)
-next (next s1);					(* = Str(2, inc 3) *)
-next (next (next s1));	(* = Str(3, inc 4) *)
+next s1;                (* = Str(1, inc 2) *)
+next (next s1);         (* = Str(2, inc 3) *)
+next (next (next s1));  (* = Str(3, inc 4) *)
 
 (* Returns a generator function which flips between 1 and 0 *)
 let flip(b : bool) : (unit -> stream) =
-	fun (y : unit) -> Str(if b then 1 else 0, flip (if b then false else true));
+  fun (y : unit) -> Str(if b then 1 else 0, flip (if b then false else true));
 
 (* Stream of alternating 1s and 0s *)
 let s2 = Str(0, flip true);
 
-next s2;								(* = Str(1, flip false) *)
-next (next s2);					(* = Str(0, flip true) *)
-next (next (next s2));	(* = Str(1, flip false) *)
+next s2;                (* = Str(1, flip false) *)
+next (next s2);         (* = Str(0, flip true) *)
+next (next (next s2));  (* = Str(1, flip false) *)
 

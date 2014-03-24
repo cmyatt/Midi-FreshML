@@ -38,18 +38,18 @@ let rec elaborate types env pat t ps =
   match pat with
   | DontCareP -> []
   | IdP s -> [(s, t)]
-	| IntP n ->
-			if t = IntT then []
-			else failA "Expression does not match pattern type" t IntT ps
-	| RealP r -> 
-			if t = RealT then []
-			else failA "Expression does not match pattern type" t RealT ps
-	| BoolP b -> 
-			if t = BoolT then []
-			else failA "Expression does not match pattern type" t BoolT ps
-	| StringP s -> 
-			if t = StringT then []
-			else failA "Expression does not match pattern type" t StringT ps
+  | IntP n ->
+      if t = IntT then []
+      else failA "Expression does not match pattern type" t IntT ps
+  | RealP r -> 
+      if t = RealT then []
+      else failA "Expression does not match pattern type" t RealT ps
+  | BoolP b -> 
+      if t = BoolT then []
+      else failA "Expression does not match pattern type" t BoolT ps
+  | StringP s -> 
+      if t = StringT then []
+      else failA "Expression does not match pattern type" t StringT ps
   | CtorP(s, p) ->
       (try
         let CtorT(FuncT(t1, t2)) = Hashtbl.find types s in
@@ -103,10 +103,10 @@ let rec bind_val types tbl pat t ps =
   match pat with
   | DontCareP -> t
   | IdP s -> Hashtbl.add tbl s t; t
-	| IntP _ -> if t = IntT then IntT else failA "" StringT t ps
-	| RealP _ -> if t = RealT then RealT else failA "" RealT t ps
-	| BoolP _ -> if t = BoolT then BoolT else failA "" BoolT t ps
-	| StringP _ -> if t = StringT then StringT else failA "" StringT t ps
+  | IntP _ -> if t = IntT then IntT else failA "" StringT t ps
+  | RealP _ -> if t = RealT then RealT else failA "" RealT t ps
+  | BoolP _ -> if t = BoolT then BoolT else failA "" BoolT t ps
+  | StringP _ -> if t = StringT then StringT else failA "" StringT t ps
   | CtorP(s, p) ->
       (try
         let CtorT(FuncT(t1, t2)) = Hashtbl.find types s in
@@ -194,7 +194,7 @@ and get_dec_type types top_level env decl ps =
  * env - maps local ids to their types
  *)
 and get_type types top_level env ast =
-	let (e, _, p) = ast in
+  let (e, _, p) = ast in
   match (e, p) with
   | Id(s), p ->
       (* Lookup in local env, then top-level env and finally types *)
@@ -228,12 +228,12 @@ and get_type types top_level env ast =
       (try let t = Hashtbl.find types s in t with
       | Not_found -> failB ("Name type "^s^" has not been declared") p)
   | If(e1, e2, e3), p ->
-			let t1 = get_type types top_level env e1 in
-			if t1 = BoolT then
-				let t2 = get_type types top_level env e2 in
-				let t3 = get_type types top_level env e3 in
-				if not(t2 = t3) then failA "" t3 t2 p else t2
-			else failB "Expected bool in if expression" p
+      let t1 = get_type types top_level env e1 in
+      if t1 = BoolT then
+        let t2 = get_type types top_level env e2 in
+        let t3 = get_type types top_level env e3 in
+        if not(t2 = t3) then failA "" t3 t2 p else t2
+      else failB "Expected bool in if expression" p
   | Swap(e1, e2, e3), p ->
       (try
         let NameT(s1) = get_type types top_level env e1 in
@@ -281,29 +281,29 @@ and get_type types top_level env ast =
   | BinaryOp((e1, pi1, p1), op, (e2, pi2, p2)), p ->
       let t1 = get_type types top_level env (e1, pi1, p1) in
       let t2 = get_type types top_level env (e2, pi2, p2) in
-			if t1 = t2 then
-				let is_num_typ t =
-					if t = IntT || t = RealT then t else failB "Expected numeric type" p2
-				in
-				let is_ineq_typ t =
-					match t with
-					| IntT -> BoolT
-					| RealT -> BoolT
-					| StringT -> BoolT
-					| _ -> failB "Expected comparable type" p2
-				in
-				(match op with
-				| Add -> is_num_typ t1
-				| Sub -> is_num_typ t1
-				| Div -> is_num_typ t1
-				| Mult -> is_num_typ t1
-				| Gt -> is_ineq_typ t1
-				| Gteq -> is_ineq_typ t1
-				| Lt -> is_ineq_typ t1
-				| Lteq -> is_ineq_typ t1
-				| Eq -> BoolT
-				| Concat -> if t1 = StringT then StringT else failA "" t1 StringT p2)
-			else failB "Operand types don't match" p2
+      if t1 = t2 then
+        let is_num_typ t =
+          if t = IntT || t = RealT then t else failB "Expected numeric type" p2
+        in
+        let is_ineq_typ t =
+          match t with
+          | IntT -> BoolT
+          | RealT -> BoolT
+          | StringT -> BoolT
+          | _ -> failB "Expected comparable type" p2
+        in
+        (match op with
+        | Add -> is_num_typ t1
+        | Sub -> is_num_typ t1
+        | Div -> is_num_typ t1
+        | Mult -> is_num_typ t1
+        | Gt -> is_ineq_typ t1
+        | Gteq -> is_ineq_typ t1
+        | Lt -> is_ineq_typ t1
+        | Lteq -> is_ineq_typ t1
+        | Eq -> BoolT
+        | Concat -> if t1 = StringT then StringT else failA "" t1 StringT p2)
+      else failB "Operand types don't match" p2
   | UnaryOp(op, (e, pi, p)), _ ->
       let t = get_type types top_level env (e, pi, p) in
       (match t with

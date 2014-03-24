@@ -6,19 +6,19 @@ type bin_op =
   | Sub
   | Div
   | Mult
-	| Gt
-	| Gteq
-	| Lt
-	| Lteq
-	| Eq
-	| Concat;;
+  | Gt
+  | Gteq
+  | Lt
+  | Lteq
+  | Eq
+  | Concat;;
 
 type un_op =
   | Neg;;
 
 type directive =
-	| Quit
-	| Use;;
+  | Quit
+  | Use;;
 
 (* string is for the type, int for the value *)
 type name = string * int;;
@@ -38,7 +38,7 @@ and expr =
   | NameLiteral of name
   | Ctor of string * exp
   | Fresh of string
-	(*| EqTest of exp * exp*)		(* equality test *)
+  (*| EqTest of exp * exp*)   (* equality test *)
   | If of exp * exp * exp
   | Swap of exp * exp * exp
   | NameAb of exp * exp
@@ -57,7 +57,7 @@ and expr =
                  * benefit from tail recursion *)
   | EofFunc     (* used in interpreter as a marker to transition between
                  * environments on the completion of a function application *)
-	| Directive of directive * string list
+  | Directive of directive * string list
 
 and exp = expr * permutation * position
 
@@ -77,10 +77,10 @@ and typ =
 and pattern =
   | DontCareP
   | IdP of string
-	| IntP of int
-	| RealP of float
-	| BoolP of bool
-	| StringP of string
+  | IntP of int
+  | RealP of float
+  | BoolP of bool
+  | StringP of string
   | CtorP of string * pattern
   | NameAbsP of pattern * pattern
   | UnitP
@@ -106,7 +106,7 @@ type prog = user_types list * exp;;
 (* Returns whether or not the given expr is a value. *)
 (* Assumes ex has been typechecked - otherwise NameAb case will be wrong *)
 let rec is_val e =
-	let (e, _, _) = e in
+  let (e, _, _) = e in
   match e with
   | IntLiteral _ -> true
   | RealLiteral _ -> true
@@ -114,8 +114,8 @@ let rec is_val e =
   | StringLiteral _ -> true
   | NameLiteral _ -> true
   | Unit -> true
-	(* Must take an arg, so if env empty, then arg not yet bound,
-	   so not yet an executable value *)
+  (* Must take an arg, so if env empty, then arg not yet bound,
+     so not yet an executable value *)
   | Lambda(_, _, _, env) -> not(env = [])
   | RecFunc(_, _, _, _, _, env) -> (env = [])
   | Ctor(_, e) -> is_val e
@@ -147,10 +147,10 @@ let rec string_of_pattern pat =
   match pat with
   | DontCareP -> "_"
   | IdP s -> s
-	| IntP n -> string_of_int n
-	| RealP r -> string_of_float r
-	| BoolP b -> string_of_bool b
-	| StringP s -> "\"" ^ s ^ "\""
+  | IntP n -> string_of_int n
+  | RealP r -> string_of_float r
+  | BoolP b -> string_of_bool b
+  | StringP s -> "\"" ^ s ^ "\""
   | CtorP(s, p) -> (s ^ " " ^ (string_of_pattern p))
   | NameAbsP(p1, p2) ->
       ("<<" ^ (string_of_pattern p1) ^ ">>(" ^ (string_of_pattern p2) ^ ")")
@@ -170,46 +170,46 @@ let string_of_un_op op =
   | Neg -> "~";;
 
 let clip_str s =
-	let max = 10000 in
+  let max = 10000 in
   if String.length s > max then ((String.sub s 0 (max-3))^"...") else s;;
 
 let string_of_directive d =
-	match d with
-	| Quit -> "#quit"
-	| Use -> "#use";;
+  match d with
+  | Quit -> "#quit"
+  | Use -> "#use";;
 
 let string_of_perm xs =
-	let rec strp = function
-		| [] -> ""
-		| ((s1, n1), (s2, n2))::[] -> Printf.sprintf "(%s_%d, %s_%d)" s1 n1 s2 n2
-		| ((s1, n1), (s2, n2))::xs -> (Printf.sprintf "(%s_%d, %s_%d), " s1 n1 s2 n2) ^ (strp xs)
-	in
-		if (List.length xs) > 0 then ("[" ^ (strp xs) ^ "]") else "";;
+  let rec strp = function
+    | [] -> ""
+    | ((s1, n1), (s2, n2))::[] -> Printf.sprintf "(%s_%d, %s_%d)" s1 n1 s2 n2
+    | ((s1, n1), (s2, n2))::xs -> (Printf.sprintf "(%s_%d, %s_%d), " s1 n1 s2 n2) ^ (strp xs)
+  in
+    if (List.length xs) > 0 then ("[" ^ (strp xs) ^ "]") else "";;
 
 (*
 let push pi e = let (e', pi', ps) = e in (e', pi' @ pi, ps);;
 
 (* Apply permutation pi to name a *)
 let permute pi a =
-	List.fold_left (fun a (a1, a2) -> if a = a1 then a2 else if a = a2 then a1 else a) a pi;;
+  List.fold_left (fun a (a1, a2) -> if a = a1 then a2 else if a = a2 then a1 else a) a pi;;
 
 let push_perm v =
-	let permute_env pi env = List.map (fun (x, v) -> (x, push pi v)) env in
-	let (e, pi, ps) = v in
-	match e with
-	| IntLiteral(n) -> (e, [], ps)
-	| RealLiteral(n) -> (e, [], ps)
-	| BoolLiteral(n) -> (e, [], ps)
-	| StringLiteral(n) -> (e, [], ps)
-	| NameLiteral(a) -> (NameLiteral(permute pi a), [], ps)
-	| Unit -> (Unit, [], ps)
-	| Lambda(s, t, e, env) -> (Lambda(s, t, e, permute_env pi env), [], ps)
-	| RecFunc(s1, s2, t1, t2, e, env) ->
-			(RecFunc(s1, s2, t1, t2, e, permute_env pi env), [], ps)
-	| Ctor(s, v) -> (Ctor(s, push pi v), [], ps)
-	| NameAb((NameLiteral(a), [], p), v) ->
-			(NameAb((NameLiteral(permute pi a), [], p), push pi v), [], ps)
-	| Pair(e1, e2) -> (Pair(push pi e1, push pi e2), [], ps);;
+  let permute_env pi env = List.map (fun (x, v) -> (x, push pi v)) env in
+  let (e, pi, ps) = v in
+  match e with
+  | IntLiteral(n) -> (e, [], ps)
+  | RealLiteral(n) -> (e, [], ps)
+  | BoolLiteral(n) -> (e, [], ps)
+  | StringLiteral(n) -> (e, [], ps)
+  | NameLiteral(a) -> (NameLiteral(permute pi a), [], ps)
+  | Unit -> (Unit, [], ps)
+  | Lambda(s, t, e, env) -> (Lambda(s, t, e, permute_env pi env), [], ps)
+  | RecFunc(s1, s2, t1, t2, e, env) ->
+      (RecFunc(s1, s2, t1, t2, e, permute_env pi env), [], ps)
+  | Ctor(s, v) -> (Ctor(s, push pi v), [], ps)
+  | NameAb((NameLiteral(a), [], p), v) ->
+      (NameAb((NameLiteral(permute pi a), [], p), push pi v), [], ps)
+  | Pair(e1, e2) -> (Pair(push pi e1, push pi e2), [], ps);;
 *)
 
 let rec string_of_dec dec =
@@ -223,10 +223,10 @@ let rec string_of_dec dec =
       raise (Match_failure ("", 0, 0))
 
 and string_of_branch b =
-	match b with
-	| [] -> ""
-	| (p, (e, _, _))::xs ->
-			"\n  | "^(string_of_pattern p)^" -> "^(string_of_expr e)^(string_of_branch xs)
+  match b with
+  | [] -> ""
+  | (p, (e, _, _))::xs ->
+      "\n  | "^(string_of_pattern p)^" -> "^(string_of_expr e)^(string_of_branch xs)
 
 (* TODO Consider not giving integer values for names in order to increase readibility *)
 and string_of_expr e =
@@ -236,7 +236,7 @@ and string_of_expr e =
   | RealLiteral(x) -> clip_str (string_of_float x)
   | BoolLiteral(x) -> clip_str (string_of_bool x)
   | StringLiteral(s) -> clip_str ("\""^s^"\"")
-  | NameLiteral(s, n) -> clip_str (s^"_"^(string_of_int n))	
+  | NameLiteral(s, n) -> clip_str (s^"_"^(string_of_int n)) 
   | Ctor(s, (e, _, _)) -> clip_str (s^" "^(string_of_expr e))
   | Fresh(s) -> clip_str ("(fresh : "^s^")")
   | If((e1, _, _), (e2, _, _), (e3, _, _)) ->
@@ -259,8 +259,8 @@ and string_of_expr e =
       clip_str ((string_of_expr e1) ^ (string_of_bin_op op) ^ (string_of_expr e2))
   | UnaryOp(op, (e, _, _)) -> clip_str ((string_of_un_op op) ^ (string_of_expr e))
   | EmptySlot -> clip_str "_"
-	| Directive(d, xs) ->
-			clip_str ((string_of_directive d) ^ (List.fold_left (fun x y -> x^" "^y) "" xs));;
+  | Directive(d, xs) ->
+      clip_str ((string_of_directive d) ^ (List.fold_left (fun x y -> x^" "^y) "" xs));;
 (*
 and string_of_expr e =
   match e with
@@ -269,7 +269,7 @@ and string_of_expr e =
   | RealLiteral(x) -> clip_str (string_of_float x)
   | BoolLiteral(x) -> clip_str (string_of_bool x)
   | StringLiteral(s) -> clip_str ("\""^s^"\"")
-  | NameLiteral(s, n) -> clip_str (s^"_"^(string_of_int n))	
+  | NameLiteral(s, n) -> clip_str (s^"_"^(string_of_int n)) 
   | Ctor(s, e) -> clip_str (s^" "^(string_of_exp e))
   | Fresh(s) -> clip_str ("fresh : "^s)
   | If(e1, e2, e3) ->
@@ -291,35 +291,35 @@ and string_of_expr e =
       clip_str ((string_of_exp e1) ^ (string_of_bin_op op) ^ (string_of_exp e2))
   | UnaryOp(op, e) -> clip_str ((string_of_un_op op) ^ (string_of_exp e))
   | EmptySlot -> clip_str "_"
-	| Directive(d, xs) ->
-			clip_str ((string_of_directive d) ^ (List.fold_left (fun x y -> x^" "^y) "" xs))
+  | Directive(d, xs) ->
+      clip_str ((string_of_directive d) ^ (List.fold_left (fun x y -> x^" "^y) "" xs))
 
 and string_of_exp ex =
-	let (e, pi, _) = ex in "(" ^ (string_of_expr e) ^ ")";;(*"---" ^ (string_of_perm pi) ^ ")";;*)
+  let (e, pi, _) = ex in "(" ^ (string_of_expr e) ^ ")";;(*"---" ^ (string_of_perm pi) ^ ")";;*)
 *)
 
 (* Returns a string of the form id : type = value for user
  * feedback following a top-level let.
  *)
 let rec extract_ids pat v t =
-	let ts = string_of_typ t in
-	let vs = string_of_expr v in
-	let str = " : " ^ ts ^ " = " ^ vs in
-	match pat with
-	| DontCareP -> "-" ^ str
-	| IdP(s) -> "val " ^ s ^ str
-	| IntP _ -> "-" ^ str
-	| RealP _ -> "-" ^ str
-	| BoolP _ -> "-" ^ str
-	| StringP _ -> "-" ^ str
-	| CtorP(_, p) -> let Ctor(_, (v', _, _)) = v in extract_ids p v' t
-	| NameAbsP(p1, p2) ->
-			let NameAb((v1, _, _), (v2, _, _)) = v in 
-			let NameAbT(t1, t2) = t in
-			(extract_ids p1 v1 t1) ^ "\n" ^ (extract_ids p2 v2 t2)
-	| UnitP -> ""
-	| ProdP(p1, p2) ->
-			let Pair((v1, _, _), (v2, _, _)) = v in 
-			let ProdT(t1, t2) = t in
-			(extract_ids p1 v1 t1) ^ "\n" ^ (extract_ids p2 v2 t2);;
+  let ts = string_of_typ t in
+  let vs = string_of_expr v in
+  let str = " : " ^ ts ^ " = " ^ vs in
+  match pat with
+  | DontCareP -> "-" ^ str
+  | IdP(s) -> "val " ^ s ^ str
+  | IntP _ -> "-" ^ str
+  | RealP _ -> "-" ^ str
+  | BoolP _ -> "-" ^ str
+  | StringP _ -> "-" ^ str
+  | CtorP(_, p) -> let Ctor(_, (v', _, _)) = v in extract_ids p v' t
+  | NameAbsP(p1, p2) ->
+      let NameAb((v1, _, _), (v2, _, _)) = v in 
+      let NameAbT(t1, t2) = t in
+      (extract_ids p1 v1 t1) ^ "\n" ^ (extract_ids p2 v2 t2)
+  | UnitP -> ""
+  | ProdP(p1, p2) ->
+      let Pair((v1, _, _), (v2, _, _)) = v in 
+      let ProdT(t1, t2) = t in
+      (extract_ids p1 v1 t1) ^ "\n" ^ (extract_ids p2 v2 t2);;
 

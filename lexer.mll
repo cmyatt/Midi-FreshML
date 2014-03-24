@@ -7,9 +7,9 @@
   (* Update lexbuf positional info *)
   (* type position = {
    *   pos_fname : string;  (* file name *)
-   *   pos_lnum : int;		  (* line number *)
-   *   pos_bol : int;		    (* the offset of the beginning of the line *)
-   *   pos_cnum : int;		  (* the offset of the position *)
+   *   pos_lnum : int;      (* line number *)
+   *   pos_bol : int;       (* the offset of the beginning of the line *)
+   *   pos_cnum : int;      (* the offset of the position *)
    * }
    *)
   let incr_linenum lexbuf =
@@ -71,7 +71,7 @@ rule scan = parse
       try let kw = Hashtbl.find keyword_tbl word in if debug then printf "%s\n" word else (); kw with
       | Not_found -> if debug then printf "ID (%s)\n" word else (); ID word
     }
-	| '#' { if debug then printf "HASH\n" else (); HASH }
+  | '#' { if debug then printf "HASH\n" else (); HASH }
   | '\"' { cur_str := ""; str_literal lexbuf }
   | '_' { if debug then printf "DONT_CARE\n" else (); DONT_CARE }
   | '+' { if debug then printf "BIN_OP (+)\n" else (); BIN_OP(AbSyn.Add) }
@@ -106,8 +106,8 @@ and comment level = parse
   | "*)" { if level = 0 then scan lexbuf else comment (level-1) lexbuf }
   | "(*" { comment (level+1) lexbuf }
   | '\n' { incr_linenum lexbuf; comment level lexbuf }
-  | _		 { comment level lexbuf }
-  | eof	 { raise (Lexer_error "Comments are not closed") }
+  | _    { comment level lexbuf }
+  | eof  { raise (Lexer_error "Comments are not closed") }
 
 and str_literal = parse
   | '\"' { if debug then printf "STRING (%s)\n" !cur_str else (); STRING !cur_str }

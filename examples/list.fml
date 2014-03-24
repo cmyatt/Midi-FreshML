@@ -1,12 +1,14 @@
-
+(* Integer list *)
 type lst where
   Nil : unit -> lst,
   Hd : int * lst -> lst;
 
+(* Create a list of the first n natural numbers in descending order *)
 let make(n : int) : lst =
   if n <= 0 then Hd(0, Nil())
   else Hd(n, make(n-1));
 
+(* Sum the elements of a list *)
 let sum(xs : lst) : int =
   match xs with
   | Nil _ -> 0
