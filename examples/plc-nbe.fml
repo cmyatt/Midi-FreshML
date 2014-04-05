@@ -1,0 +1,275 @@
+(**********************************************************************
+
+  plc-nbe.ml
+
+  Type checking and normalisation by evaluation for 
+  Polymorphic Lambda Calculus (PLC) in Fresh OCaml
+ 
+  Ported from Fresh OCaml example by A.M.Pitts
+
+	C.G.Myatt
+	2014-06-03
+
+*********************************************************************)
+
+name tyvar;                         (* type variables, a *)
+
+type ty where                       (* types, t *)
+  Tyvar : tyvar -> ty,              (* a *)
+  Fun : ty * ty -> ty,              (* t1 -> t2 *)
+  All : <<tyvar>>ty -> ty,          (* All a. t *)
+  Ty_Failure : string -> ty;        (* Since no exceptions *)
+
+name var;                           (* variables, x *)
+
+type expr where                     (* expressions, e *)
+  Var : var -> expr,                (* x *)
+  Lam : ty * <<var>>expr -> expr,   (* \x:t.e *)
+  App : expr * expr -> expr,        (* e1 e2 *)
+  Gen : <<tyvar>>expr -> expr,      (* \a.e *)
+  Spec : expr * ty -> expr;         (* e t *)
+
+type sem, neu where									(* semantics, d and neutral elements, n *)
+	L : ty * (sem -> sem) -> sem,
+	G : (ty -> sem) -> sem,
+	N : neu -> sem,
+	Sem_Failure : string -> sem,
+	V : var -> neu,
+	A : neu * sem -> neu,
+	S : neu * ty -> neu;
+
+(* No built-in support for lists so have to create our own *)
+type tyenv where                    (* typing environment : list of (var * ty) *)
+  TNil : unit -> tyenv,
+  THd : (var * ty) * tyenv -> tyenv;
+
+type semenv where                    (* semantic environment : list of (var * sem) *)
+  SNil : unit -> semenv,
+  SHd : (var * sem) * semenv -> semenv;
+
+let tcons = fun (x : (var * ty) * tyenv) ->
+  let (y, env) = x in THd(y, env);
+
+let scons = fun (x : (var * sem) * semenv) ->
+  let (y, env) = x in SHd(y, env);
+
+(* Get the type associated with a variable in a typing environment *)
+let tlookup(x : var * tyenv) : ty =
+  let (v, env) = x in
+  match env with
+  | TNil _ -> Ty_Failure "Lookup failure"
+  | THd((v', t'), env) -> if v = v' then t' else tlookup (v, env);
+
+(* Get the type associated with a variable in a typing environment *)
+let slookup(x : var * semenv) : sem =
+  let (v, env) = x in
+  match env with
+  | SNil _ -> Sem_Failure "Lookup failure"
+  | SHd((v', t'), env) -> if v = v' then t' else slookup (v, env);
+
+(********************************************************************* 
+   Type inference:
+   typ (tenv : ty env) (e : expr) returns the type of e in the typing
+   environment tenv, returning failure if there is no such type 
+*********************************************************************)
+
+(* Capture-avoiding substitution of t for free occurrences of 
+	 (Tyvar a) in types *)
+let ty_subst = fun (x : tyvar * (ty * ty)) ->
+	let (a, (t, t')) = x in
+  let sub (t' : ty) : ty =
+    match t' with
+		| Tyvar a1 -> if a = a1 then t else t'
+    | Fun(t1, t2) -> Fun(sub t1, sub t2)
+    | All(<<a1>>t1) -> All(<<a1>>(sub t1))
+      (* note that a is automatically fresh for t, so we 
+				 avoid "capture" in this case! *)
+  in sub t';
+
+let typ(x : tyenv * expr) : ty =
+	let (tenv, e) = x in
+  match e with
+	| Var x -> tlookup(x, tenv)
+  | Lam(t, <<x>>e1) -> Fun(t, typ (tcons ((x, t), tenv), e1))
+  | App(e1, e2) ->
+			(match typ (tenv, e1) with
+			| Fun(t1, t2) ->
+					if t1 = typ (tenv, e2) then t2
+					else Ty_Failure "Arg does not match function type"
+			| _ -> Ty_Failure "Expression does not have function type")
+  | Gen(<<a>>e1) -> All(<<a>>(typ (tenv, e1)))
+  | Spec(e1, t1) ->
+			(match typ (tenv, e1) with
+			| All(<<a>>t) -> ty_subst (a, (t1, t))
+			| _ -> Ty_Failure "Expected All(-)");
+
+(*********************************************************************
+  Normalisation by evaluation:
+
+  nbe (tenv : ty env) (e :expr) returns a pair (t, e'), where t is
+  the type of e, given tenv, and e' is the beta-normal
+  form of e;  exception Typ_failure is raised if there is no type.
+
+  semeq (tenv : ty env) (e1 : expr) (e2 : expr) returns true iff e1
+  and e1 have the same type, given tenv, and the same beta-normal
+  form; exception Typ_failure is raised if there is no type.
+*********************************************************************)
+
+(* Capture-avoiding substitution of t for free occurrences of 
+   (Tyvar a) in expressions *) 
+let ex_subst = fun (x : tyvar * ty) ->
+	let (a, t) = x in
+  let sub (e : expr) : expr =
+		match e with
+		| Var x1 -> e
+    | Lam(t1, <<x1>>e1) -> Lam(ty_subst (a, (t, t1)), <<x1>>(sub e1))
+    | App(e1, e2) -> App(sub e1, sub e2)
+    | Gen(<<a1>>e1) -> Gen(<<a1>>(sub e1))
+    | Spec(e1, t1) -> Spec(sub e1, ty_subst (a, (t, t1)))
+  in sub;
+
+(* Reification *)
+let reify (d : sem) : expr =
+	let reifyn (n : neu) : expr =
+		match n with
+		| V x -> Var x
+		| A(n1, d1) -> App(reifyn n1, reify d1)
+		| S(n1, t1) -> Spec(reifyn n1, t1)
+	in
+  match d with
+  | L(t, f) -> let x = (fresh : var) in Lam(t, <<x>>(reify(f(N(V x)))))
+  | G g -> let a = (fresh : tyvar) in Gen(<<a>>(reify(g(Tyvar a))))
+  | N n -> reifyn n;
+
+(* Evaluation *)
+let eval (x : semenv * expr) : sem =
+	let (senv, e) = x in
+  match e with
+  | Var x ->
+			let s = slookup (x, senv) in
+			(match s with
+			| Sem_Failure _ -> N(V x)
+			| _ -> s)
+  | Lam(t, <<x>>e1) -> L(t, fun (d : sem) -> eval (scons ((x, d), senv), e1))
+  | App(e1, e2) ->
+			(match eval (senv, e1) with
+			| L(t, f) -> f (eval (senv, e2))
+			| G _ -> Sem_Failure "Expression not well-typed"
+					(* this case never occurs for well typed expressions *)
+			| N n -> N(A(n, eval (senv, e2))))
+  | Gen(<<a>>e1) -> G(fun (t : ty) -> eval (senv, (ex_subst (a, t)) e1))
+  | Spec(e1, t1) -> 
+			(match eval (senv, e1) with
+			| L _ -> Sem_Failure "Expression not well-typed"
+					(* this case never occurs for well typed expressions *)
+			| G g -> g t1
+			| N n -> N(S(n, t1)));
+
+(* TODO should get error when not matching all ctor args in match expr *)
+(* TODO let bound vars inside if expr not being recognised correctly... *)
+
+let tyenv_to_semenv (tenv : tyenv) : semenv =
+	let map (x : ((var * ty) -> (var * sem)) * tyenv) : semenv =
+		let (f, tenv) = x in
+		match tenv with
+		| TNil _ -> SNil ()
+		| THd((v, t), xs) -> scons (f (v, t), map (f, xs))
+	in
+  map (fun (x : var * ty) -> let (y, t) = x in (y, N(V y)), tenv);
+
+let nbe (x : tyenv * expr) : ty * expr =
+	let (tenv, e) = x in
+  (typ (tenv, e), reify (eval (tyenv_to_semenv tenv, e)));
+
+let semeq (x : tyenv * (expr * expr)) : bool =
+	let (tenv, (e1, e2)) = x in
+	let sv = tyenv_to_semenv tenv in
+  if (typ (tenv, e1)) = (typ (tenv, e2))
+  then
+		(reify (eval (sv, e1))) = (reify (eval (sv, e2)))
+	else false;
+
+(********************************************************************
+  Example: list processing in PLC 
+*********************************************************************)
+
+let (a, a') = (fresh : tyvar, fresh : tyvar);
+
+let a_list =
+  (* All a'. a' -> (a -> a' -> a') -> a' *)
+  All(<<a'>>(
+    Fun(Tyvar a', 
+    Fun(Fun(Tyvar a, Fun(Tyvar a', Tyvar a')), Tyvar a'))));
+
+let (x, (x', (f, l))) = 
+  (fresh : var, (fresh : var, (fresh : var, fresh : var)));
+
+let plc_nil =
+  (* /\a. /\a'. \x' : a'. \f : a -> a' -> a'. x' *)
+  Gen(<<a>>(Gen(<<a'>>(Lam(Tyvar a', 
+  <<x'>>(Lam(Fun(Tyvar a, Fun(Tyvar a', Tyvar a')), 
+  <<f>>(Var x'))))))));
+
+(typ (TNil (), plc_nil)) = All(<<a>>a_list); (* true *)
+
+let plc_cons =
+  (*  /\a. \x : a. \l : a_list. /\a'. \x' : a'. \f : a -> a' -> a'. 
+      f x (l a' x' f) *)
+  Gen(<<a>>(Lam(Tyvar a, <<x>>(Lam(a_list, <<l>>(Gen(<<a'>>(
+    Lam(Tyvar a', <<x'>>(Lam(Fun(Tyvar a, Fun(Tyvar a', Tyvar a')),
+    <<f>>(App(App(Var f, Var x), App(App(Spec(Var l, Tyvar a'), 
+    Var x'), Var f))))))))))))));
+
+(typ (TNil (), plc_cons)) = All(<<a>>(Fun(Tyvar a, Fun(a_list, a_list)))); (* true *)
+
+let plc_iter =
+  (* /\a. /\a'. \x' : a'. \f : a -> a' -> a'. \l : a_list. 
+     l a' x' f *)
+  Gen(<<a>>(Gen(<<a'>>(Lam(Tyvar a', <<x'>>(
+    Lam(Fun(Tyvar a, Fun(Tyvar a', Tyvar a')), <<f>>(Lam(a_list,
+    <<l>>(App(App(Spec(Var l, Tyvar a'), Var x'), Var f)))))))))));
+
+(typ (TNil (), plc_iter)) =
+    All(<<a>>(All(<<a'>>(Fun(Tyvar a', 
+    Fun(Fun(Tyvar a, Fun(Tyvar a', Tyvar a')), 
+    Fun(a_list, Tyvar a'))))))); (* true *)
+
+let tenv =
+  (* [ x' |-> a', f |-> a -> a' -> a' ] *)
+  THd((x', Tyvar a'), THd((f, Fun(Tyvar a, Fun(Tyvar a', Tyvar a'))), TNil ()));
+
+let nil_lhs =
+  (* plc_iter a a' x' f (plc_nil a) 
+     This should be beta-equal to x' *)
+  App(App(App(Spec(Spec(plc_iter, Tyvar a), 
+  Tyvar a'), Var x'), Var f), Spec(plc_nil, Tyvar a));
+
+(typ (tenv, nil_lhs)) = Tyvar a'; (* true *)
+
+semeq (tenv, (nil_lhs, Var x')); (* true *)
+
+let tenv' =
+  (* [ x |-> a, l |-> a_list, x' |-> a', f |-> a -> a' -> a' ] *)
+  THd((x, Tyvar a), THd((l, a_list), tenv));
+
+let cons_lhs =
+  (* plc_iter a a' x' f (plc_cons a x l) *)
+  App(App(App(Spec(Spec(plc_iter, Tyvar a), 
+  Tyvar a'), Var x'), Var f), 
+  App(App(Spec(plc_cons, Tyvar a), Var x), Var l));
+
+(typ (tenv', cons_lhs)) = Tyvar a'; (* true *)
+
+let cons_rhs =
+  (* f x (plc_iter a a' x' f l) *)
+  App(App(Var f, Var x), App(App(App(Spec(Spec(plc_iter, Tyvar a), 
+  Tyvar a'), Var x'), Var f), Var l));
+
+(typ (tenv', cons_rhs)) = Tyvar a'; (* true *)
+
+semeq (tenv', (cons_lhs, cons_rhs)); (* true *)
+
+(*********************************************************************
+  end of plc-nbe.fml
+*********************************************************************) 
+
