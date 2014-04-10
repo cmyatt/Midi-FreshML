@@ -41,6 +41,7 @@
       ("in", IN);
       ("fresh", FRESH);
       ("swap", SWAP);
+      ("freshfor", FRESH_FOR);
       ("int", INT_T);
       ("real", REAL_T);
       ("bool", BOOL_T);

@@ -38,6 +38,7 @@ and expr =
   | NameLiteral of name
   | Ctor of string * exp
   | Fresh of string
+  | FreshFor of exp * exp
   (*| EqTest of exp * exp*)   (* equality test *)
   | If of exp * exp * exp
   | Swap of exp * exp * exp
@@ -69,7 +70,7 @@ and typ =
   | CtorT of typ
   | DataT of string
   | NameT of string
-  | NameAbT of typ * typ  (* For now, the first type is constrained to NameT *)
+  | NameAbT of typ * typ
   | UnitT
   | ProdT of typ * typ
   | FuncT of typ * typ
@@ -239,6 +240,8 @@ and string_of_expr e =
   | NameLiteral(s, n) -> clip_str (s^"_"^(string_of_int n)) 
   | Ctor(s, (e, _, _)) -> clip_str (s^" "^(string_of_expr e))
   | Fresh(s) -> clip_str ("(fresh : "^s^")")
+  | FreshFor((e1, _, _), (e2, _, _)) ->
+			clip_str ("(" ^ (string_of_expr e1) ^ " freshfor " ^ (string_of_expr e2) ^ ")")
   | If((e1, _, _), (e2, _, _), (e3, _, _)) ->
       clip_str ("if "^(string_of_expr e1)^" then "^(string_of_expr e2)^" else "^(string_of_expr e3))
   | Swap((e1, _, _), (e2, _, _), (e3, _, _)) ->
@@ -272,6 +275,8 @@ and string_of_expr e =
   | NameLiteral(s, n) -> clip_str (s^"_"^(string_of_int n)) 
   | Ctor(s, e) -> clip_str (s^" "^(string_of_exp e))
   | Fresh(s) -> clip_str ("fresh : "^s)
+  | FreshFor(e1, e2) ->
+			clip_str ("(" ^ (string_of_exp e1) ^ " freshfor " ^ (string_of_exp e2) ^ ")")
   | If(e1, e2, e3) ->
       clip_str ("if "^(string_of_exp e1)^" then "^(string_of_exp e2)^" else "^(string_of_exp e3))
   | Swap(e1, e2, e3) ->

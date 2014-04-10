@@ -42,6 +42,7 @@
       ("in", IN);
       ("fresh", FRESH);
       ("swap", SWAP);
+      ("freshfor", FRESH_FOR);
       ("int", INT_T);
       ("real", REAL_T);
       ("bool", BOOL_T);
@@ -51,7 +52,7 @@
 
   let cur_str = ref "";;
 
-# 55 "lexer.ml"
+# 56 "lexer.ml"
 let __ocaml_lex_tables = {
   Lexing.lex_base = 
    "\000\000\222\255\223\255\225\255\226\255\004\000\231\255\232\255\
@@ -359,207 +360,207 @@ and __ocaml_lex_scan_rec lexbuf __ocaml_lex_state =
   match Lexing.engine __ocaml_lex_tables __ocaml_lex_state lexbuf with
       | 0 ->
 let
-# 60 "lexer.mll"
+# 61 "lexer.mll"
               inum
-# 365 "lexer.ml"
+# 366 "lexer.ml"
 = Lexing.sub_lexeme lexbuf lexbuf.Lexing.lex_start_pos lexbuf.Lexing.lex_curr_pos in
-# 60 "lexer.mll"
+# 61 "lexer.mll"
                    (
       let n = int_of_string inum in if debug then printf "INT (%d)\n" n else ();
       INT n
     )
-# 372 "lexer.ml"
+# 373 "lexer.ml"
 
   | 1 ->
 let
-# 64 "lexer.mll"
+# 65 "lexer.mll"
                          rnum
-# 378 "lexer.ml"
+# 379 "lexer.ml"
 = Lexing.sub_lexeme lexbuf lexbuf.Lexing.lex_start_pos lexbuf.Lexing.lex_curr_pos in
-# 64 "lexer.mll"
+# 65 "lexer.mll"
                               (
       let n = float_of_string rnum in if debug then printf "REAL (%f)\n" n else ();
       REAL n
     )
-# 385 "lexer.ml"
+# 386 "lexer.ml"
 
   | 2 ->
 let
-# 69 "lexer.mll"
+# 70 "lexer.mll"
                b
-# 391 "lexer.ml"
+# 392 "lexer.ml"
 = Lexing.sub_lexeme lexbuf lexbuf.Lexing.lex_start_pos lexbuf.Lexing.lex_curr_pos in
-# 69 "lexer.mll"
+# 70 "lexer.mll"
                  ( if debug then printf "BOOL (%s)\n" b else (); BOOL (bool_of_string b) )
-# 395 "lexer.ml"
+# 396 "lexer.ml"
 
   | 3 ->
 let
-# 70 "lexer.mll"
+# 71 "lexer.mll"
           word
-# 401 "lexer.ml"
+# 402 "lexer.ml"
 = Lexing.sub_lexeme lexbuf lexbuf.Lexing.lex_start_pos lexbuf.Lexing.lex_curr_pos in
-# 70 "lexer.mll"
+# 71 "lexer.mll"
                (
       try let kw = Hashtbl.find keyword_tbl word in if debug then printf "%s\n" word else (); kw with
       | Not_found -> if debug then printf "ID (%s)\n" word else (); ID word
     )
-# 408 "lexer.ml"
+# 409 "lexer.ml"
 
   | 4 ->
-# 74 "lexer.mll"
+# 75 "lexer.mll"
         ( if debug then printf "HASH\n" else (); HASH )
-# 413 "lexer.ml"
+# 414 "lexer.ml"
 
   | 5 ->
-# 75 "lexer.mll"
+# 76 "lexer.mll"
          ( cur_str := ""; str_literal lexbuf )
-# 418 "lexer.ml"
+# 419 "lexer.ml"
 
   | 6 ->
-# 76 "lexer.mll"
+# 77 "lexer.mll"
         ( if debug then printf "DONT_CARE\n" else (); DONT_CARE )
-# 423 "lexer.ml"
+# 424 "lexer.ml"
 
   | 7 ->
-# 77 "lexer.mll"
+# 78 "lexer.mll"
         ( if debug then printf "BIN_OP (+)\n" else (); BIN_OP(AbSyn.Add) )
-# 428 "lexer.ml"
+# 429 "lexer.ml"
 
   | 8 ->
-# 78 "lexer.mll"
+# 79 "lexer.mll"
         ( if debug then printf "BIN_OP (-)\n" else (); BIN_OP(AbSyn.Sub) )
-# 433 "lexer.ml"
+# 434 "lexer.ml"
 
   | 9 ->
-# 79 "lexer.mll"
+# 80 "lexer.mll"
         ( if debug then printf "STAR\n" else (); STAR )
-# 438 "lexer.ml"
+# 439 "lexer.ml"
 
   | 10 ->
-# 80 "lexer.mll"
+# 81 "lexer.mll"
         ( if debug then printf "BIN_OP (/)\n" else (); BIN_OP(AbSyn.Div) )
-# 443 "lexer.ml"
+# 444 "lexer.ml"
 
   | 11 ->
-# 81 "lexer.mll"
+# 82 "lexer.mll"
         ( if debug then printf "BIN_OP (^)\n" else (); BIN_OP(AbSyn.Concat) )
-# 448 "lexer.ml"
+# 449 "lexer.ml"
 
   | 12 ->
-# 82 "lexer.mll"
+# 83 "lexer.mll"
          ( if debug then printf "GT_EQ\n" else (); BIN_OP(AbSyn.Gteq) )
-# 453 "lexer.ml"
+# 454 "lexer.ml"
 
   | 13 ->
-# 83 "lexer.mll"
+# 84 "lexer.mll"
          ( if debug then printf "LT_EQ\n" else (); BIN_OP(AbSyn.Lteq) )
-# 458 "lexer.ml"
+# 459 "lexer.ml"
 
   | 14 ->
-# 84 "lexer.mll"
+# 85 "lexer.mll"
          ( if debug then printf "LT\n" else (); BIN_OP(AbSyn.Lt) )
-# 463 "lexer.ml"
+# 464 "lexer.ml"
 
   | 15 ->
-# 85 "lexer.mll"
+# 86 "lexer.mll"
          ( if debug then printf "GT\n" else (); BIN_OP(AbSyn.Gt) )
-# 468 "lexer.ml"
+# 469 "lexer.ml"
 
   | 16 ->
-# 86 "lexer.mll"
+# 87 "lexer.mll"
          ( if debug then printf "L_PAREN\n" else (); L_PAREN )
-# 473 "lexer.ml"
+# 474 "lexer.ml"
 
   | 17 ->
-# 87 "lexer.mll"
+# 88 "lexer.mll"
          ( if debug then printf "R_PAREN\n" else (); R_PAREN )
-# 478 "lexer.ml"
+# 479 "lexer.ml"
 
   | 18 ->
-# 88 "lexer.mll"
+# 89 "lexer.mll"
          ( if debug then printf "UN_OP (~)\n" else (); UN_OP(AbSyn.Neg) )
-# 483 "lexer.ml"
+# 484 "lexer.ml"
 
   | 19 ->
-# 89 "lexer.mll"
+# 90 "lexer.mll"
          ( if debug then printf "EQUAL\n" else (); EQUAL )
-# 488 "lexer.ml"
+# 489 "lexer.ml"
 
   | 20 ->
-# 90 "lexer.mll"
+# 91 "lexer.mll"
          ( if debug then printf "COMMA\n" else (); COMMA )
-# 493 "lexer.ml"
+# 494 "lexer.ml"
 
   | 21 ->
-# 91 "lexer.mll"
+# 92 "lexer.mll"
          ( if debug then printf "UNIT\n" else (); UNIT )
-# 498 "lexer.ml"
+# 499 "lexer.ml"
 
   | 22 ->
-# 92 "lexer.mll"
+# 93 "lexer.mll"
          ( if debug then printf "ARROW\n" else (); ARROW )
-# 503 "lexer.ml"
+# 504 "lexer.ml"
 
   | 23 ->
-# 93 "lexer.mll"
+# 94 "lexer.mll"
          ( if debug then printf "BAR\n" else (); BAR )
-# 508 "lexer.ml"
+# 509 "lexer.ml"
 
   | 24 ->
-# 94 "lexer.mll"
+# 95 "lexer.mll"
          ( if debug then printf "COLON\n" else (); COLON )
-# 513 "lexer.ml"
+# 514 "lexer.ml"
 
   | 25 ->
-# 95 "lexer.mll"
+# 96 "lexer.mll"
          ( if debug then printf "DBL_SEMI\n" else (); DBL_SEMI )
-# 518 "lexer.ml"
+# 519 "lexer.ml"
 
   | 26 ->
-# 96 "lexer.mll"
+# 97 "lexer.mll"
          ( if debug then printf "SEMI\n" else (); SEMI )
-# 523 "lexer.ml"
+# 524 "lexer.ml"
 
   | 27 ->
-# 97 "lexer.mll"
+# 98 "lexer.mll"
          ( if debug then printf "DBL_LT\n" else (); DBL_LT )
-# 528 "lexer.ml"
+# 529 "lexer.ml"
 
   | 28 ->
-# 98 "lexer.mll"
+# 99 "lexer.mll"
          ( if debug then printf "DBL_GT\n" else (); DBL_GT )
-# 533 "lexer.ml"
+# 534 "lexer.ml"
 
   | 29 ->
-# 99 "lexer.mll"
+# 100 "lexer.mll"
          ( incr_linenum lexbuf; scan lexbuf )
-# 538 "lexer.ml"
+# 539 "lexer.ml"
 
   | 30 ->
-# 100 "lexer.mll"
+# 101 "lexer.mll"
                ( scan lexbuf )
-# 543 "lexer.ml"
+# 544 "lexer.ml"
 
   | 31 ->
-# 101 "lexer.mll"
+# 102 "lexer.mll"
          ( comment 0 lexbuf )
-# 548 "lexer.ml"
+# 549 "lexer.ml"
 
   | 32 ->
 let
-# 102 "lexer.mll"
+# 103 "lexer.mll"
          c
-# 554 "lexer.ml"
+# 555 "lexer.ml"
 = Lexing.sub_lexeme_char lexbuf lexbuf.Lexing.lex_start_pos in
-# 102 "lexer.mll"
+# 103 "lexer.mll"
            ( raise (Lexer_error ("Unrecognised character: "^(Char.escaped c))) )
-# 558 "lexer.ml"
+# 559 "lexer.ml"
 
   | 33 ->
-# 103 "lexer.mll"
+# 104 "lexer.mll"
         ( raise End_of_file )
-# 563 "lexer.ml"
+# 564 "lexer.ml"
 
   | __ocaml_lex_state -> lexbuf.Lexing.refill_buff lexbuf; __ocaml_lex_scan_rec lexbuf __ocaml_lex_state
 
@@ -568,29 +569,29 @@ and comment level lexbuf =
 and __ocaml_lex_comment_rec level lexbuf __ocaml_lex_state =
   match Lexing.engine __ocaml_lex_tables __ocaml_lex_state lexbuf with
       | 0 ->
-# 106 "lexer.mll"
+# 107 "lexer.mll"
          ( if level = 0 then scan lexbuf else comment (level-1) lexbuf )
-# 574 "lexer.ml"
+# 575 "lexer.ml"
 
   | 1 ->
-# 107 "lexer.mll"
+# 108 "lexer.mll"
          ( comment (level+1) lexbuf )
-# 579 "lexer.ml"
+# 580 "lexer.ml"
 
   | 2 ->
-# 108 "lexer.mll"
+# 109 "lexer.mll"
          ( incr_linenum lexbuf; comment level lexbuf )
-# 584 "lexer.ml"
+# 585 "lexer.ml"
 
   | 3 ->
-# 109 "lexer.mll"
+# 110 "lexer.mll"
          ( comment level lexbuf )
-# 589 "lexer.ml"
+# 590 "lexer.ml"
 
   | 4 ->
-# 110 "lexer.mll"
+# 111 "lexer.mll"
          ( raise (Lexer_error "Comments are not closed") )
-# 594 "lexer.ml"
+# 595 "lexer.ml"
 
   | __ocaml_lex_state -> lexbuf.Lexing.refill_buff lexbuf; __ocaml_lex_comment_rec level lexbuf __ocaml_lex_state
 
@@ -599,30 +600,30 @@ and str_literal lexbuf =
 and __ocaml_lex_str_literal_rec lexbuf __ocaml_lex_state =
   match Lexing.engine __ocaml_lex_tables __ocaml_lex_state lexbuf with
       | 0 ->
-# 113 "lexer.mll"
+# 114 "lexer.mll"
          ( if debug then printf "STRING (%s)\n" !cur_str else (); STRING !cur_str )
-# 605 "lexer.ml"
+# 606 "lexer.ml"
 
   | 1 ->
 let
-# 114 "lexer.mll"
+# 115 "lexer.mll"
          c
-# 611 "lexer.ml"
+# 612 "lexer.ml"
 = Lexing.sub_lexeme_char lexbuf lexbuf.Lexing.lex_start_pos in
-# 114 "lexer.mll"
+# 115 "lexer.mll"
            ( cur_str := (!cur_str ^ (Char.escaped c)); str_literal lexbuf )
-# 615 "lexer.ml"
+# 616 "lexer.ml"
 
   | 2 ->
-# 115 "lexer.mll"
+# 116 "lexer.mll"
         ( raise (Lexer_error "String literal not closed") )
-# 620 "lexer.ml"
+# 621 "lexer.ml"
 
   | __ocaml_lex_state -> lexbuf.Lexing.refill_buff lexbuf; __ocaml_lex_str_literal_rec lexbuf __ocaml_lex_state
 
 ;;
 
-# 117 "lexer.mll"
+# 118 "lexer.mll"
  
   (*
   let rec parse lexbuf =
@@ -645,4 +646,4 @@ let
   let _ = Printexc.print main ();;
   *)
 
-# 649 "lexer.ml"
+# 650 "lexer.ml"

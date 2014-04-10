@@ -29,7 +29,7 @@
 	let print_info = ref true;;
 %}
 
-%token NAME TYPE WHERE IF THEN ELSE MATCH WITH LET REC FUN IN FRESH SWAP LIST
+%token NAME TYPE WHERE IF THEN ELSE MATCH WITH LET REC FUN IN FRESH SWAP FRESH_FOR LIST
 %token INT_T REAL_T BOOL_T STRING_T UNIT_T
 %token L_PAREN R_PAREN
 %token HASH       /* # */
@@ -56,7 +56,7 @@
 %left SEMI DBL_SEMI STAR ARROW COMMA ELSE
 %right IF LET
 %nonassoc EQUAL DBL_GT DBL_LT L_PAREN R_PAREN UN_OP NAME TYPE WHERE MATCH WITH
-%nonassoc FUN IN FRESH SWAP DONT_CARE LT GT UNIT COLON BAR
+%nonassoc FUN IN FRESH SWAP FRESH_FOR DONT_CARE LT GT UNIT COLON BAR
 
 %start program 
 %type <((string, int) Hashtbl.t) * ((string, AbSyn.typ) Hashtbl.t) * AbSyn.exp list> program
@@ -143,12 +143,10 @@ type_name:
       Not_found -> parse_error ("Undefined identifier: "^$1); raise Parse_error
     }
   | DBL_LT ID DBL_GT type_name {
-      try let NameT(s) = Hashtbl.find types $2 in NameAbT(NameT(s), $4) with
-      | Not_found ->
-          parse_error ("Undefined identifier: "^$2); raise Parse_error
-      | Match_failure _ ->
-          parse_error ("Expected name type in name abstraction");
-          raise Parse_error
+      try NameAbT(Hashtbl.find types $2, $4)
+      with Not_found ->
+          parse_error ("Undefined identifier: "^$2);
+					raise Parse_error
     }
   | UNIT_T { UnitT }
   | type_name STAR type_name { ProdT($1, $3) }
@@ -209,6 +207,7 @@ sub_exp:
   | SWAP L_PAREN exp COMMA exp R_PAREN IN exp {
       (Swap($3, $5, $8), [], get_pos 1)
     }
+	| exp FRESH_FOR exp { (FreshFor($1, $3), [], get_pos 1) }
   | DBL_LT exp DBL_GT exp {
       (NameAb($2, $4), [], get_pos 1)
     }

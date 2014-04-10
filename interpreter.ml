@@ -109,7 +109,7 @@ let permute pi a =
 
 (*
  * Presented as cf(-) in the semantics.
- * Pushes the permutation attached to the given expression through the first
+ * Pushes the permutation attached to the given value through the first
  * level of its structure, making the outermost constructor manifest.
  *)
 let push_perm v =
@@ -120,10 +120,10 @@ let push_perm v =
 		let permute_env pi env = List.map (fun (x, v) -> (x, push pi v)) env in
 		push_perm_count := !push_perm_count + 1;
 		match e with
-		| IntLiteral n -> (e, [], ps)
-		| RealLiteral n -> (e, [], ps)
-		| BoolLiteral n -> (e, [], ps)
-		| StringLiteral n -> (e, [], ps)
+		| IntLiteral _ -> (e, [], ps)
+		| RealLiteral _ -> (e, [], ps)
+		| BoolLiteral _ -> (e, [], ps)
+		| StringLiteral _ -> (e, [], ps)
 		| NameLiteral a -> (NameLiteral(permute pi a), [], ps)
 		| Unit -> (Unit, [], ps)
 		| Lambda(s, t, e, env) -> (Lambda(s, t, e, permute_env pi env), [], ps)
@@ -134,6 +134,139 @@ let push_perm v =
 				(NameAb((NameLiteral(permute pi a), [], p), push pi v), [], ps)
 		| Pair(e1, e2) -> (Pair(push pi e1, push pi e2), [], ps)
 		| _ -> raise (Run_time_error "Got expression but expected value for permutation application");;
+
+(* Push all permutations within v fully through to the atomic
+   values from which v is composed *)
+let rec fully_push v =
+	let (e, pi, ps) = v in
+	let permute_env pi env = List.map (fun (x, v) -> (x, fully_push (push pi v))) env in
+	match e with
+	| IntLiteral _ -> (e, [], ps)
+	| RealLiteral _ -> (e, [], ps)
+	| BoolLiteral _ -> (e, [], ps)
+	| StringLiteral _ -> (e, [], ps)
+	| NameLiteral a -> (NameLiteral(permute pi a), [], ps)
+	| Unit -> (Unit, [], ps)
+	| Lambda(s, t, e, env) -> (Lambda(s, t, e, permute_env pi env), [], ps)
+	| RecFunc(s1, s2, t1, t2, e, env) ->
+			(RecFunc(s1, s2, t1, t2, e, permute_env pi env), [], ps)
+	| Ctor(s, v) -> (Ctor(s, fully_push (push pi v)), [], ps)
+	| NameAb(v1, v2) ->
+			(NameAb(fully_push (push pi v1), fully_push (push pi v2)), [], ps)
+	| Pair(e1, e2) -> (Pair(fully_push (push pi e1), fully_push (push pi e2)), [], ps)
+	| _ ->
+			raise (Run_time_error ("Got expression: " ^ (string_of_expr e) ^ " but expected "
+				^ "value for permutation application"));;
+
+(*
+ * Determine the algebraic support (conservative approximation for the least
+ * finite support of the denotation of a value) for the given value.
+ * This is used for deconstructing generalised abstraction patterns.
+ * Paraphrasing section 2.2.3.(pp.19) of Shinwell's thesis:
+ *
+ *	The algebraic support of some value corresponds to the free
+ *	variables of the object language term which it encodes. For
+ *	an atom a it is the set {a}, for a pair (v, v') it is the
+ *	union of the supports for v and v', for <<v>>v' it is
+ *	the support of v' minus the support of v.
+ *
+ * Raises a run-time error if v is not a value.
+*)
+let rec algebraic_support dp v =
+	(* Use tail-recursive filter rather than non-tail-recursive List.filter
+		 since order unimportant*)
+	let rec filter f xs ys =
+		match xs with
+		| [] -> ys
+		| z::zs ->
+				let ys' = if f z then (z::ys) else ys in
+				filter f zs ys'
+	in
+	let union xss = List.fold_left (fun x y -> x @ y) [] xss in
+	let rec find_pat_ids p =
+		match p with
+		| IdP s -> [s]
+		| CtorP(_, p') -> find_pat_ids p'
+		| NameAbsP(p1, p2) -> (find_pat_ids p1) @ (find_pat_ids p2)
+		| ProdP(p1, p2) -> (find_pat_ids p1) @ (find_pat_ids p2)
+		| _ -> []
+	in
+	(* Ignore all ids s for which (f s) is true *)
+	(* Returns (free_ids, supports of free ids within closures in e) *)
+	let rec find_ids f e =
+		let (e', _, _) = e in
+		let combine2 e1 e2 =
+			let (ids1, sups1) = find_ids f e1 in
+			let (ids2, sups2) = find_ids f e2 in
+			(ids1 @ ids2, sups1 @ sups2)
+		in
+		let combine3 e1 e2 e3 =
+			let (ids1, sups1) = find_ids f e1 in
+			let (ids2, sups2) = find_ids f e2 in
+			let (ids3, sups3) = find_ids f e3 in
+			(ids1 @ ids2 @ ids3, sups1 @ sups2 @ sups3)
+		in
+		match e' with
+		| Id s -> if f s then ([], []) else ([s], [])
+		| Ctor(s, e) -> find_ids f e
+		| FreshFor(e1, e2) -> combine2 e1 e2
+		| If(e1, e2, e3) -> combine3 e1 e2 e3
+		| Swap(e1, e2, e3) -> combine3 e1 e2 e3
+		| NameAb(e1, e2) -> combine2 e1 e2
+		| Pair(e1, e2) -> combine2 e1 e2
+		| Lambda(s, _, e, env) ->
+				(* Can't just return free vars in e since need to lookup them up in env
+					 rather than some other env. Instead calculate supports of free vars
+					 and return pair of (free_ids, supports of free_ids). *)
+				let (ids, sups1) = find_ids (fun x -> x = s || f x) e in
+				let sups2 = union (List.map (fun s -> algebraic_support dp (lookup s (env::[]))) ids) in
+				([], sups2 @ sups1)
+		| RecFunc(s1, s2, _, _, e, env) ->
+				let (ids, sups1) = find_ids (fun x -> x = s1 || x = s2 || f x) e in
+				let sups2 = union (List.map (fun s -> algebraic_support dp (lookup s (env::[]))) ids) in
+				([], sups2 @ sups1)
+		| App(e1, e2) -> combine2 e1 e2
+		| Match(e, br) ->
+				List.fold_left (fun (xs, ws) (ys, zs) -> (xs @ ys, ws @ zs)) ([], [])
+					(List.map (fun (_, e) -> find_ids f e) br)
+		| Let(ValBind(p, e1), e2) ->
+				let (ids1, sups1) = find_ids f e1 in
+				let bound_ids = find_pat_ids p in
+				let (ids2, sups2) = find_ids (fun x -> List.mem x bound_ids || f x) e2 in
+				(ids1 @ ids2, sups1 @ sups2)
+		| Let(RecF(RecFunc(s1, s2, t1, t2, e1, env)), e2) ->
+				let (ids1, sups1) = find_ids f (RecFunc(s1, s2, t1, t2, e1, env), [], (0, 0))	in
+				let (ids2, sups2) = find_ids (fun x -> x = s1 || x = s2 || f x) e2 in
+				(ids1 @ ids2, sups1 @ sups2)
+		| BinaryOp(e1, _, e2) -> combine2 e1 e2
+		| UnaryOp(_, e) -> find_ids f e
+		| TopLet _ ->
+				(* Should never get TopLet since find_ids only called on sub-expressions and
+			 		 TopLet only ever appears at the top-level. *)
+				raise (Run_time_error ("Got top level let expression within find_ids, "
+					^ "expected sub-expression"))
+		| _ -> ([], [])
+	in
+	let (v', [], ps) = if dp then push_perm v else v in
+	match v' with
+	| IntLiteral _ -> []
+	| RealLiteral _ -> []
+  | BoolLiteral _ -> []
+  | StringLiteral _ -> []
+  | NameLiteral a -> [a]
+  | Unit -> []
+	(* Union the supports of the free variables of the function *)
+  | Lambda _ -> let ([], support) = find_ids (fun _ -> false) (v', [], ps) in support
+  | RecFunc _ -> let ([], support) = find_ids (fun _ -> false) (v', [], ps) in support
+  | Ctor(_, e) -> algebraic_support dp e
+  | NameAb(e1, e2) ->
+			let sup1 = algebraic_support dp e1 in
+			let sup2 = algebraic_support dp e2 in
+			filter (fun x -> not (List.mem x sup1)) sup2 []
+  | Pair(e1, e2) -> (algebraic_support dp e1) @ (algebraic_support dp e2)
+  | _ ->
+			raise (Run_time_error ("Got expression but expected a value when"
+				^ "calculating algebraic support"));;
 
 let rec calc_ineq delay_perms atoms v1 op v2 =
   match op with
@@ -279,6 +412,8 @@ let rec exp_state delay_perms atoms env fs ast =
     | Ctor(s, e') ->
         exp_state delay_perms atoms env ((Ctor(s, empty e'), [], ps)::fs) e'
     | Fresh(s) -> let a = gen_atom atoms s in val_state delay_perms atoms env fs (a, [], ps)
+		| FreshFor(e1, e2) ->
+				exp_state delay_perms atoms env ((FreshFor(empty e1, e2), [], ps)::fs) e1
     | If(e1, e2, e3) ->
         exp_state delay_perms atoms env ((If(empty e1, e2, e3), [], ps)::fs) e1
     | Swap(e1, e2, e3) ->
@@ -310,7 +445,7 @@ let rec exp_state delay_perms atoms env fs ast =
 (* Invariant: is_val ast = true *)
 and val_state delay_perms atoms env fs ast =
 	(* TODO fully push perm on ast here rather than on id lookup *)
-  if fs = [] then (env, push_perm ast)
+  if fs = [] then (env, fully_push ast)
   else
     (* Permutations will be empty for elements of FS, so ignore them *)
     let (e, [], ps)::xs = fs in
@@ -318,6 +453,13 @@ and val_state delay_perms atoms env fs ast =
     | EofFunc -> val_state delay_perms atoms (List.tl env) xs ast
     | Ctor(s, (EmptySlot, [], _)) ->
         val_state delay_perms atoms env xs (Ctor(s, ast), [], ps)
+		| FreshFor((EmptySlot, [], _), e) ->
+				let NameLiteral(a), _, p = if delay_perms then push_perm ast else ast in
+				exp_state delay_perms atoms env
+					((FreshFor((NameLiteral(a), [], p), empty e), [], ps)::xs) e
+		| FreshFor((NameLiteral(a), [], _), (EmptySlot, [], _)) ->
+				(* a freshfor e iff a notin algebraic_support of e *)
+				(env, (BoolLiteral(not(List.mem a (algebraic_support delay_perms ast))), [], ps))
     | If((EmptySlot, [], _), e1, e2) ->
         let BoolLiteral(b), _, _ = ast in
         exp_state delay_perms atoms env xs (if b then e1 else e2)
@@ -429,27 +571,50 @@ and match_state delay_perms atoms env ms fs is_top ast =
       match_state delay_perms atoms env ms
         ((Let(ValBind(pat, (EmptySlot, [], p1)), e'), [], ps)::xs) is_top v'
   | Let(ValBind(NameAbsP(IdP(x), pat), (EmptySlot, [], p1)), e) ->
-      let NameAb((NameLiteral(s, n), [], p2), v), pi, p3 = ast in
-      let NameLiteral(a') = gen_atom atoms s in
-      (* Add a perm to freshen all bound names BEFORE pushing the existing perm into
-         the abstraction body. *)
-      let v' = if delay_perms then push pi (push [a', (s, n)] v) else swap a' (s, n) v in
-      (* XXX But this name abs might be nested somewhere inside e - don't want to replace
-             all of e if is_top, only the name abs part.
+			let (v1, pi, p3) = ast in
+			(match v1 with
+      | NameAb((NameLiteral(s, n), [], p2), v) ->
+					let NameLiteral(a') = gen_atom atoms s in
+					(* Add a perm to freshen all bound names BEFORE pushing the existing perm into
+						 the abstraction body. *)
+					let v' = if delay_perms then push pi (push [a', (s, n)] v) else swap a' (s, n) v in
+					(* But this name abs might be nested somewhere inside e - don't want to replace
+						 all of e if is_top, only the name abs part. Options:
 
-         Solution: return stale value and alter string_of_expr code to normalise
-                   all name values - e.g. increment counter at each bind, leave
-                   free names as-is (will be correct since not bound and therefore
-                   will not have been freshened).
+						 (1) Return stale value and alter string_of_expr code to normalise
+								 all name values - e.g. increment counter at each bind, leave
+								 free names as-is (will be correct since not bound and therefore
+								 will not have been freshened).
 
-         OR: since user doesn't care about actual values, just report stale values.
-             Not very nice when evaluate ids bound in the pattern and get different
-             values, bu it does save a lot of work and doesn't alter functionality.
-             YES, GO WITH THIS SECOND OPTION.
-      *)
-      let e' = e in (*if is_top then (NameAb((NameLiteral(a'), [], p2), v'), [], p3) else e in*)
-      match_state delay_perms atoms (cons (x, (NameLiteral(a'), [], p2)) env) ms
-        ((Let(ValBind(pat, (EmptySlot, [], p1)), e'), [], ps)::xs) is_top v'
+						 (2) since user doesn't care about actual values, just report stale values.
+								 Not very nice when evaluate ids bound in the pattern and get different
+								 values, bu it does save a lot of work and doesn't alter functionality.
+
+							Going with (2).
+					*)
+					let e' = e in (*if is_top then (NameAb((NameLiteral(a'), [], p2), v'), [], p3) else e in*)
+					match_state delay_perms atoms (cons (x, (NameLiteral(a'), [], p2)) env) ms
+						((Let(ValBind(pat, (EmptySlot, [], p1)), e'), [], ps)::xs) is_top v'
+			| NameAb(v2, v3) ->
+					(* For generalised abstraction patterns:
+							<<x>>x' = <<v>>v'
+						 Assign to x' the value produced by freshening v' with all the atoms
+						 which occur in (algebraic_support v).
+						 Assign to x all the value produced by freshening v with all the atoms 
+						 which occur in (algebraic_support v).
+					*)
+					(* Generate fresh atoms for all atoms in the algebraic support of v2 *)
+					let sup = algebraic_support delay_perms v2 in
+					let pi' = List.map (fun (s, n) -> let NameLiteral(a) = gen_atom atoms s in ((s, n), a)) sup in
+					(* Swap/push these new atoms for the old ones in both v2 and v3 *)
+					let v2' = if delay_perms then push pi (push pi' v2)
+										else List.fold_left (fun v (a1, a2) -> swap a1 a2 v) v2 pi'
+					in
+					let v3' = if delay_perms then push pi (push pi' v3)
+										else List.fold_left (fun v (a1, a2) -> swap a1 a2 v) v3 pi'
+					in
+					match_state delay_perms atoms (cons (x, v2') env) ms
+						((Let(ValBind(pat, (EmptySlot, [], p1)), e), [], ps)::xs) is_top v3')
   | Let(ValBind(UnitP, _), e) -> exp_state delay_perms atoms env xs e
   | Let(ValBind(ProdP(pat1, pat2), (EmptySlot, [], p1)), e) ->
       let Pair(v1, v2), [], _ = if delay_perms then push_perm ast else ast in

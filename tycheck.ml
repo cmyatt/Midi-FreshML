@@ -1,4 +1,3 @@
-(* TODO Improve comments, add overall design doc, and check formatting *)
 (* TODO Produce warnings on re-declaring name- and data-types in same scope *)
 
 open AbSyn;;
@@ -61,19 +60,20 @@ let rec elaborate types env pat t ps =
           failB ("Expected function type for constructor '"^s^"'") ps)
   | NameAbsP(IdP(s1), p) ->
       (match t with
-      | NameAbT(NameT(s2), t1) ->
-          let es = elaborate types env p t1 ps in
+      | NameAbT(t1, t2) ->
+          let es = elaborate types env p t2 ps in
           (try
             let _ = lookup s1 es in
             failB ("Name identifier "^s1^" already exists in this scope") ps
           with
-          | Not_found -> (elaborate types env (IdP s1) (NameT s2) ps) @ (es @ env))
+          | Not_found -> (elaborate types env (IdP s1) t1 ps) @ (es @ env))
       | _ -> failB "Expression is not a name abstraction" ps)
   | NameAbsP(DontCareP, p) ->
       (match t with
-      | NameAbT(NameT(s2), t1) ->
+      | NameAbT(_, t1) ->
           let es = elaborate types env p t1 ps in es @ env
       | _ -> failB "Expression is not a name abstraction" ps)
+	(* TODO Allow any pattern in binding position *)
   | NameAbsP _ ->
       failB ("Unexpected pattern in name abstraction binding position. "^
         "Must be id or _") ps
@@ -227,6 +227,12 @@ and get_type types top_level env ast =
   | Fresh s, p ->
       (try let t = Hashtbl.find types s in t with
       | Not_found -> failB ("Name type "^s^" has not been declared") p)
+	| FreshFor(e1, e2), p ->
+			(try
+				let NameT(s) = get_type types top_level env e1 in
+				let _ = get_type types top_level env e2 in	(* still need to check e2 has a valid type *)
+				BoolT
+			with Match_failure _ -> failB "Expected name type in freshfor expression" p)
   | If(e1, e2, e3), p ->
       let t1 = get_type types top_level env e1 in
       if t1 = BoolT then
@@ -245,11 +251,12 @@ and get_type types top_level env ast =
           (let (e5, _, _) = e1 in Printf.printf "x : %s\n" (string_of_expr e5);
           failB "Expected name types in swap" p))
   | NameAb(e1, e2), p ->
-      (try
-        let NameT(s) = get_type types top_level env e1 in
-        let t = get_type types top_level env e2 in NameAbT(NameT(s), t)
-      with
-      | Match_failure _ -> failB "Expected name type in name abstraction" p)
+			(* Allow generalised types in binding position and so do not require that
+				 e1 have some name type. Functions are not allowed in binding position
+				 but this is detected at run-time (similar to how function equality is
+				 handled). *)
+			let t1 = get_type types top_level env e1 in
+  		let t2 = get_type types top_level env e2 in NameAbT(t1, t2)
   | Unit, p -> UnitT
   | Pair(e1, e2), p ->
       let t1 = get_type types top_level env e1 in
@@ -301,7 +308,7 @@ and get_type types top_level env ast =
         | Gteq -> is_ineq_typ t1
         | Lt -> is_ineq_typ t1
         | Lteq -> is_ineq_typ t1
-        | Eq -> BoolT
+        | Eq -> BoolT		(* don't check types here - do it at runtime (like OCaml does) *)
         | Concat -> if t1 = StringT then StringT else failA "" t1 StringT p2)
       else failB "Operand types don't match" p2
   | UnaryOp(op, (e, pi, p)), _ ->

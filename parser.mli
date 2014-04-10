@@ -13,6 +13,7 @@ type token =
   | IN
   | FRESH
   | SWAP
+  | FRESH_FOR
   | LIST
   | INT_T
   | REAL_T
@@ -44,10 +45,3 @@ type token =
 
 val program :
   (Lexing.lexbuf  -> token) -> Lexing.lexbuf -> ((string, int) Hashtbl.t) * ((string, AbSyn.typ) Hashtbl.t) * AbSyn.exp list
-
-val print_info : bool ref
-
-val atoms : (string, int) Hashtbl.t
-
-val types : (string, AbSyn.typ) Hashtbl.t
-
