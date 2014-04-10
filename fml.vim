@@ -9,7 +9,7 @@ endif
 
 " Keywords
 syn keyword fmlKeywords name type where if then else match with let
-syn keyword fmlKeywords fun in fresh swap list
+syn keyword fmlKeywords fun in fresh swap freshfor list
 syn keyword fmlTypes int real bool string unit
 syn match fmlSymbols '|'
 syn match fmlSymbols '\['
