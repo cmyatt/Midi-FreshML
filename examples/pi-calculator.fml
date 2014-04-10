@@ -1,0 +1,563 @@
+(*********************************************************************
+
+ File name: pi-calculator.ml
+
+ Midi-FreshML program to calculate the possible labelled transitions 
+ from a process expression in the Milner-Parrow-Walker Pi-Calculus.
+
+ Usage: see the section on HOW TO USE THIS FILE, below.
+
+ Original Author: A.M.Pitts
+ Date: 2003-08-08
+
+ Ported to Midi-FreshML by C.G.Myatt
+
+ Reference:
+
+ [SW] Davide Sangiorgi and David Walker, 'The pi-calculus: a theory of
+ mobile processes' (CUP, 2001).
+
+*********************************************************************)
+
+(*********************************************************************
+ SYNTAX
+
+ We use the following grammar for pi-calculus processes:
+
+          processes p ::= m             guarded sum              
+                          p | p         composition
+                          nu x(p)       restriction
+                          !p            replication
+       guarded sums m ::= 0             inaction
+                          a             prefixed process
+                          m + m         summation
+ prefixed processes a ::= out c c. p    output prefix
+                          in c(x). p    input prefix
+                          tau. p        unobservable prefix
+                          [c = c]a      match prefix
+
+  where c,x range over names of channels.
+
+ This grammar is equivalent to [SW, Definition 1.1.1], but corresponds 
+ more closely to the datatype proc for processes declared below, 
+ which uses use abstraction types, <<chan>>(-), when representing 
+ operations that bind channel names.  
+
+ Corresponding to the syntactic categories p, m, a given above are
+ datatypes proc, gsum and prefix, declared below. This file does not
+ give a parser for turning strings into values of these datatypes. It
+ does contain print functions for displaying such values as strings
+ obeying the above grammar.
+
+*********************************************************************)
+
+name chan;			(* channel names, c,x *)
+
+type proc, gsum, prefix where
+	(* pi-calculus processes, p *)
+  Gd : gsum -> proc,											(* m *)
+  Par : proc * proc	-> proc,							(* p1 | p2 *)    
+  Res : <<chan>>proc -> proc,							(* nu x(p) *)
+  Rep : proc -> proc,											(* !p *)
+	(* guarded sums, m *)
+  Inact : unit -> gsum,										(* 0 *)
+  Pre : prefix -> gsum,										(* a *)
+  Plus : gsum * gsum -> gsum,							(* m1 + m2 *)
+	(* prefixes, a *)
+  Out : (chan * chan) * proc -> prefix,			(* out c1 c2. p *)
+  In : chan * (<<chan>>proc) -> prefix,		(* in c(x). p  *)
+  Tau : proc -> prefix,										(* tau. p *)
+  Match : (chan * chan) * prefix -> prefix;	(* [c1 = c2]a *)
+
+(************************************************************************ 
+ RENAMING FUNCTION
+
+ (subst (c, c')) p gives the result of capture-avoiding substitution in
+ p:proc of the channel name c':chan for all occurrences of c:chan that
+ are not within the scope of a binder <<c''>>(-).
+
+ Notes: (1) The definition of rename is remarkably simple! 
+ 						(because of the way Midi-FreshML handles binding operations)
+				(2) Midi-FreshML does not support mutual recursion and so the
+						renaming functions have been altered to take a function
+						argument in addition to the others args specified in the
+						original Fresh OCaml version.
+************************************************************************)
+
+let subst (x : chan * chan) : proc -> proc =
+	let (c, c') = x in
+  let rename (f : gsum -> gsum) : proc -> proc =
+		(* Need to make this anonymous function recursive... *)
+		let g(p : proc) : proc =
+			match p with
+			| Gd m -> Gd(f m)
+			| Par(p1, p2) -> Par(g p1, g p2)
+			| Res(<<x>>p1) -> Res(<<x>>(g p1))
+			| Rep p1 -> Rep(g p1)
+		in g
+	in
+  let renameg (f : prefix -> prefix) : gsum -> gsum =
+		let g(m : gsum) : gsum =
+			match m with
+			| Inact -> Inact
+			| Pre a -> Pre(f a)
+			| Plus(m1, m2) -> Plus(g m1, g m2)
+		in g
+	in
+  let renamep(f : chan -> chan) : prefix -> prefix =
+		let g(a : prefix) : prefix =
+			let h = rename(renameg g) in
+			match a with
+			| Out((c1, c2), p) -> Out((f c1, f c2), h p)
+			| In(c1, <<x>>p) -> In(f c1, <<x>>(h p))
+			| Tau p -> Tau(h p)
+			| Match((c1, c2), a) -> Match((f c1, f c2), g a)
+		in g
+	in
+  let renamec (c1 : chan) : chan = if c1 = c then c' else c1 in
+  rename (renameg (renamep renamec));
+
+(*********************************************************************
+ LABELLED TRANSITION SYSTEM
+  
+  We are going to use the "late transition system" defined in [SW,
+  Definition 4.3.1]. This is because it enables us to give a _finite_
+  list of outcomes of one step of transition, relying on the 'image
+  finiteness' properties of the labelled transition system---see [SW,
+  Corollary 1.4.6] (which refers to the "early" transition system) and
+  [SW, Lemma 4.3.2] (which explains the close relationship between late
+  and early transitions).
+
+  According to [SW, Definition 4.3.1], transitions from a process P 
+  take the form 
+  
+  p |---act---> p'
+
+  where act is either the unobservable action (tau), free output (out
+  c1 c2), bound output (out c1(c2)), or bound input (in c1(c2)). We
+  collect act and the residual process p' into a pair and then use
+  name-abstraction to take account of binding. Thus the results of a
+  transition from a process p are given by the values of the datatype
+  value declared below. Given p : proc, (next p) : (value list) returns
+  a finite list of distinct values representing all the possible
+  labelled transitions steps from
+  p. 
+
+*********************************************************************)
+
+(* Results of a transition *)
+type value where
+	TauVal : proc -> value,											(* |---tau---------> p *)
+  FrOutVal : (chan * chan) * proc -> value,		(* |---out c1 c2---> p *)
+  BnOutVal : chan * (<<chan>>proc) -> value,	(* |---out c(x)----> p *)
+  InVal : chan * (<<chan>>proc) -> value;			(* |---in c(x)-----> p *)
+
+type value_option where
+	None : unit -> value_option,
+	Some : value -> value_option;
+
+type value_list where
+	Nil : unit -> value_list,
+	Hd : value * value_list -> value_list;
+
+let cons = fun (x : value * value_list) -> Hd(x);
+
+let contains(x : value * value_list) : bool =
+	let (y, ys) = x in
+	match ys with
+	| Nil _ -> false
+	| Hd(y', ys') -> if y = y' then true else contains(y, ys');
+
+(* Append lists without duplicating *)
+let append(zs : value_list * value_list) : value_list =
+	let (xs, ys) = zs in
+  match ys with
+	| Nil _ -> xs
+	| Hd(y, ys') -> 
+			if contains(y, xs) then append(xs, ys')
+			else append(cons(y, xs), ys');
+
+let map(x : (value -> value) * value_list) : value_list =
+	let (f, ys) = x in
+	match ys with
+	| Nil _ -> Nil ()
+	| Hd(y', ys') -> Hd(f y', map (f, ys'));
+
+let mapPartial(f : value -> value_option) : value_list -> value_list =
+  let map(xs : value_list) : value_list =
+		match xs with
+		| Nil _ -> Nil ()
+    | Hd(x, xs') -> 
+				(match f x with
+				| None -> map xs'
+				| Some y -> cons(y, map xs'))
+  in map;
+
+(* (mapMatrixPartial f xs ys) returns a list containing all those
+	 z for which Some z = f x y, for some x in xs and y in ys *)
+let mapMatrixPartial(x : (value * value -> value_option) * (value_list * value_list)) : value_list =
+	let (f, (xs, ys)) = x in
+  let m(y : value * (value_list * value_list)) : value_list =
+		let (x, (ys, zs)) = y in
+		match ys with
+		| Nil _ -> zs
+    | Hd(y', ys') -> 
+	  		(match f (x, y') with
+	      | None _ -> m(x, (ys', zs))
+	    	| Some z -> m(x, (ys', cons(z, zs))))
+	in
+  let ms (y : (value_list * value_list) * value_list) : value_list =
+		let ((xs, ys), zs) = y in
+		match xs with
+		| Nil _ -> zs
+    | Hd(x, xs') -> ms((xs', ys), m (x, (ys, zs)))
+  in
+	ms((xs, ys), Nil ());
+
+(* Helper function for the L-PAR-L rule [SW, Table 4.1] *)
+let parlVal(p : proc) : value -> value = 
+	fun (v : value) ->
+		match v with
+		| TauVal p1 -> TauVal(Par(p1, p))
+		| FrOutVal((c1, c2), p2) -> FrOutVal((c1, c2), Par(p2, p))
+		| BnOutVal(c1, <<x>>p2) -> BnOutVal(c1, <<x>>(Par(p2, p)))
+		| InVal(c1, <<x>>p2) -> InVal(c1, <<x>>(Par(p2, p)));
+ 
+(* Helper function for the L-PAR-R rule [SW, Table 4.1] *) 
+let parrVal(p : proc) : value -> value =
+	fun (v : value) ->
+		match v with
+		|	TauVal p1 -> TauVal(Par(p, p1))
+		| FrOutVal((c1, c2), p2) -> FrOutVal((c1, c2), Par(p, p2))
+		| BnOutVal(c1, <<x>>p2) -> BnOutVal(c1, <<x>>(Par(p, p2)))
+		| InVal(c1, <<x>>p2) -> InVal(c1, <<x>>(Par(p, p2)));
+
+(* Synchronised communication between two values using
+	 the COMM-L/R and CLOSE-L/R rules [SW, Table 4.1] *)
+let syncVal(x : value * value) : value_option =
+	let (v, v') = x in
+  match v with
+	| FrOutVal((c1, c2), p) ->
+			(match v' with
+			| InVal(c1', <<x>>p') ->
+					if c1 = c1' then Some(TauVal(Par(p, (subst (x, c2)) p')))
+					else None()
+			| _ -> None())
+  | BnOutVal(c, <<x>>p) ->
+			(match v' with
+			| InVal(c', <<x'>>p') ->
+					if c = c' then Some(TauVal(Res(<<x>>(Par(p, swap (x, x') in p')))))
+					else None()
+	  	| _ -> None())
+  | InVal(c, <<x>>p) ->
+			(match v' with
+			|	FrOutVal((c1, c2), p') -> 
+					if c = c1 then Some(TauVal(Par((subst (x, c2)) p, p')))
+					else None()
+			| BnOutVal(c', <<x'>>p') ->
+					if c = c' then Some(TauVal(Res(<<x'>>(Par(swap (x', x) in p, p')))))
+					else None()
+	  	| _ -> None())
+	| _ -> None();
+
+(* Helper function for the L-RES rule [SW, Table 4.1] *)
+let resVal(c : chan) : value -> value_option =
+	fun (v : value) ->
+		match v with
+		| TauVal p -> Some(TauVal(Res(<<c>>p)))
+		| FrOutVal((c1, c2), p) -> 
+				if c = c1 then None()
+				else (if c = c2 then Some(BnOutVal(c1, <<c>>p))
+				else Some(FrOutVal((c1, c2), Res(<<c>>p))))
+		| BnOutVal(c1, <<x>>p) ->
+				if c = c1 then None()
+				else Some(BnOutVal(c1, <<x>>(Res(<<c>>p))))
+		| InVal(c1, <<x>>p) -> 
+				if c = c1 then None()
+				else Some(InVal(c1, <<x>>(Res(<<c>>p))));
+
+(* Helper function for the L-OPEN rule  [SW, Table 4.1] *)
+let resOpenVal(c : chan) : value -> value_option =
+	fun (v : value) ->
+		match v with
+		| FrOutVal((c1, c2), p) -> 
+				if c = c1 then None()
+				else (if c = c2 then Some(BnOutVal(c1, <<c>>p))
+				else None())
+		| _ -> None();
+
+(* Compute the list of distinct values resulting from one step 
+   of transition *)
+let next(p : proc) : value_list =
+  match p with
+  | Gd(Inact _) -> Nil()
+  | Gd(Pre(Out((c1, c2), p'))) -> Hd(FrOutVal((c1, c2), p'), Nil ())
+  | Gd(Pre(In(c, abs))) -> Hd(InVal(c, abs), Nil ())
+  | Gd(Pre(Tau p1)) -> Hd(TauVal p1, Nil ())
+  | Gd(Pre(Match((c1, c2), pre))) -> if c1 = c2 then next(Gd(Pre pre)) else Nil()
+  | Gd(Plus(m, m')) -> append(next(Gd m), next(Gd m'))
+  | Par(p1, p2) ->
+			let vs1 = next p1 in
+			let vs2 = next p2 in
+			(* apply the PAR-L, PAR-R, COMM-L/R and CLOSE-L/R rules *)
+			append(append(map ((parlVal p2), vs1), map ((parrVal p1), vs2)), 
+				(mapMatrixPartial (syncVal, (vs1, vs2)))) 
+  | Res(<<x1>>p1) ->
+      let vs = next p1 in
+      (* apply the RES and OPEN rules *)
+			append((mapPartial (resVal x1)) vs, (mapPartial (resOpenVal x1)) vs)
+  | Rep(p1) ->
+      let vs = next p1 in
+      (* apply the REP-ACT, REP-COMM-L/R and REP-CLOSE-L/R rules *)
+      append(map (parlVal p, vs), map (parlVal p, mapMatrixPartial (syncVal, (vs, vs))));
+
+(*********************************************************************
+ DISPLAYING PROCESSES
+
+ Recall that we use the following grammar for pi-calculus processes:
+
+          processes p ::= m             guarded sum              
+                          p | p         composition
+                          nu x(p)       restriction
+                         !p            replication
+       guarded sums m ::= 0             inaction
+                          a             prefixed process
+                          m + m         summation
+ prefixed processes a ::= out c c. p    output prefix
+                          in c(x). p    input prefix
+                          tau. p        unobservable prefix
+                          [c = c]a      match prefix
+
+  where c,x range over names of channels.
+
+  Given p : proc, print_next p displays p and the possible labelled
+  transitions from p. Free channel names are displayed using c0,
+  c1,.... and bound ones using x0, x1, x2,... with bound names reused
+  within local scopes.
+
+  *********************************************************************)
+
+type chan_int_list where
+	CNil : unit -> chan_int_list,
+	CHd : (chan * int) * chan_int_list -> chan_int_list;
+
+type int_option where
+	INone : unit -> int_option,
+	ISome : int -> int_option;
+
+let ccons = fun (x : (chan * int) * chan_int_list) -> CHd(x);
+
+let lookup(x : chan * chan_int_list) : int_option =
+	let (c, cs) = x in
+	match cs with
+	| CNil _ -> INone ()
+	| CHd((c', n), cs') -> if c = c' then (ISome n) else lookup(c, cs');
+
+(* global state to keep track of free channel names; the free
+   component stores a list associating numbers with names; the fc
+   component is intended to store the length of that list *)
+type state where
+	State : chan_int_list * int -> state;
+
+let s = State(CNil (), 0);
+
+(* local environment to keep track of bound channel names; the free
+   component is a list associating numbers with names; the bc
+   component is intended to be the length of that list *)
+type env where
+	Env : chan_int_list * int -> env;
+
+let print_int(n : int) : string =
+	match n with
+	| 0 -> "0"
+	| 1 -> "1"
+	| 2 -> "2"
+	| 3 -> "3"
+	| 4 -> "4"
+	| 5 -> "5"
+	| 6 -> "6"
+	| 7 -> "7"
+	| 8 -> "8"
+	| 9 -> "9"
+	| n1 -> let n2 = n1 / 10 in (print_int n2) ^ (print_int (n1 - n2));
+
+(* Print a channel in the given environment and current state *)
+let print_chan = fun (x : env * (chan * state)) ->
+	let (Env(bound, bc), (c, s)) = x in
+	let State(free, fc) = s in
+  let n = lookup(c, bound) in
+	match n with
+  (* if there is no entry in e, assume c is free *)
+	| INone _ -> 
+			let n = lookup(c, free) in
+			(match n with
+			| INone _ ->
+					(* a newly encountered free name, so update the state *)
+					("c" ^ (print_int fc), State(ccons((c, fc), free), fc + 1))
+			| ISome n' -> ("c" ^ (print_int n'), s))
+  (* print bound names as xn, with n found from the environment *) 
+  | ISome n' -> ("x" ^ (print_int n'), s);
+
+(* Helper functions for printing parentheses *)
+let open_paren = fun (x : int * int) ->
+	let (prec, op_prec) = x in if prec > op_prec then "(" else "";
+
+let close_paren = fun (x : int * int) ->
+	let (prec, op_prec) = x in if prec > op_prec then ")" else "";
+
+let join(x : (((state * value) -> (string * state)) * state) * value_list) : string =
+	let ((f, st), ys) = x in
+	match ys with
+	| Nil _ -> ""
+	| Hd(y', ys') -> let (str1, st1) = f(st, y') in str1 ^ (join((f, st1), ys'));
+
+(* The main display function *)
+let print_next = fun (p : proc) ->
+	let pr(f : (env * state) * (int * gsum) -> (string * state))
+		: (env * state) * (int * proc) -> (string * state) =
+		let g(x : (env * state) * (int * proc)) : (string * state) =
+			let ((e, st), (prec, p)) = x in
+			(* print process p in current state with environment e and
+				 operator precedence prec *)
+			match p with
+			| Gd m -> f((e, st), (0, m))
+			| Par(p1, p2) ->
+					let (str1, st1) = g((e, st), (1, p1)) in
+					let (str2, st2) = g((e, st1), (1, p2)) in
+					((open_paren(prec, 1)) ^ str1 ^ " | " ^ str2 ^ (close_paren(prec, 1)), st2)
+			| Res(<<x>>p1) ->
+					let Env(cs, n) = e in
+					let e' = Env(ccons((x, n), cs), n + 1) in
+					let (str, st') = g((e', st), (2, p1)) in
+					((open_paren(prec, 2)) ^ "nu x" ^ (print_int n) ^ " " ^ str
+					^ (close_paren(prec, 2)), st')
+			| Rep p1 ->
+					let (str, st') = g((e, st), (2, p1)) in
+					((open_paren(prec, 2)) ^ "!" ^ str ^ (close_paren(prec, 2)), st')
+		in g
+	in
+  let pr_p(f : (env * state) * (int * proc) -> (string * state))
+		: (env * state) * (int * prefix) -> (string * state) =
+  	let g(x : (env * state) * (int * prefix)) : (string * state) =
+			let ((e, st), (prec, a)) = x in
+			match a with
+			| Out((c1, c2), p) ->
+					let (str1, st1) = print_chan(e, (c1, st)) in
+					let (str2, st2) = print_chan(e, (c2, st1)) in
+					let (str3, st3) = f((e, st2), (2, p)) in
+					((open_paren(prec, 2)) ^ "out " ^ str1 ^ " " ^ str2 ^ ". " ^ str3
+					^ (close_paren(prec, 2)), st3)
+			| In(c, <<x>>p) ->
+					let Env(cs, n) = e in
+					let e' = Env(ccons((x, n), cs), n+1) in
+					let (str1, st1) = print_chan(e, (c, st)) in
+					let (str2, st2) = f((e', st1), (2, p)) in
+					((open_paren(prec, 2)) ^ "in " ^ str1 ^ "(x" ^ (print_int n)
+					^ "). " ^ str2 ^ (close_paren(prec, 2)), st2)
+			| Tau p ->
+					let (str, st') = f((e, st), (2, p)) in
+					((open_paren(prec, 2)) ^ "tau.  " ^ str ^ (close_paren(prec, 2)), st')
+			| Match((c1, c2), a') ->
+					let (str1, st1) = print_chan(e, (c1, st)) in
+					let (str2, st2) = print_chan(e, (c2, st1)) in
+					let (str3, st3) = g((e, st2), (2, a')) in
+					((open_paren(prec, 2)) ^ "[" ^ str1 ^ " = " ^ str2 ^ "]" ^ str3
+					^ (close_paren(prec, 2)), st3)
+		in g
+	in
+	(*let pr_g(f : (env * (int * prefix)) -> string) : (env * (int * gsum)) -> string =*)
+	let pr_g(x : (env * state) * (int * gsum)) : string * state =
+		let f = pr_p(pr pr_g) in
+		let ((e, st), (prec, m)) = x in
+		match m with
+		| Inact -> ("0", st)
+		| Pre a -> f((e, st), (2, a))
+		| Plus(m1, m2) ->
+				let (str1, st1) = pr_g((e, st), (0, m1)) in
+				let (str2, st2) = pr_g((e, st1), (0, m2)) in
+				((open_paren(prec, 0)) ^ str1 ^ " + " ^ str2 ^ (close_paren(prec, 0)), st2)
+	in
+	let pr = pr pr_g in
+  let pr_v = fun (e : env) ->
+		fun (x : state * value) ->
+			let (st, v) = x in
+			match v with
+			| TauVal p ->
+					let (str, st') = pr((e, st), (0, p)) in
+					("|---tau---> " ^ str ^ "\n\n", st')
+			| FrOutVal((c1, c2), p) ->
+					let (str1, st1) = print_chan(e, (c1, st)) in
+					let (str2, st2) = print_chan(e, (c2, st1)) in
+					let (str3, st3) = pr((e, st2), (0, p)) in
+					("|---out " ^ str1 ^ " " ^ str2 ^ "---> " ^ str3 ^ "\n\n", st3)
+			| BnOutVal(c, <<x>>p) ->
+					let Env(cs, n) = e in
+					let e' = Env(ccons((x, n), cs), n + 1) in
+					let (str1, st1) = print_chan(e, (c, st)) in
+					let (str2, st2) = pr((e', st1), (0, p)) in
+					("|---out " ^ str1 ^ "(x" ^ (print_int n) ^ ")---> " ^ str2 ^ "\n\n", st2)
+			| InVal(c, <<x>>p) ->
+					let Env(cs, n) = e in
+					let e' = Env(ccons((x, n), cs), n + 1) in
+					let (str1, st1) = print_chan(e, (c, st)) in
+					let (str2, st2) = pr((e', st1), (0, p)) in
+					("|---in " ^ str1 ^ "(x" ^ (print_int n) ^ ")---> " ^ str2 ^ "\n\n", st2)
+  in
+  (* intialise the state *)
+	let s = State(CNil(), 0) in
+  (* initial environment *)
+  let e0 = Env(CNil(), 0) in
+  (* display p *)
+  let (str, st') = (pr((e0, s), (0, p))) in
+	str ^ " can do the following transitions:"
+  (* display the list of possible lsabelled transitions from p *)
+  ^ (join((pr_v e0, st'), next p));
+
+(*********************************************************************
+ HOW TO USE THIS FILE
+
+  Start the Fresh O'Caml interactive system in the directory where
+  this file is located. Then do
+  
+  #use "pi-calculator.ml";;
+
+  at the Fresh O'Caml prompt. Now declare some values p of type proc
+  (one example is given below) and use (printNext p) to display the
+  possible late labelled transitions from the process represented by
+  p.
+
+*********************************************************************)
+
+(* 
+	 (nu s (out x s.(out s a.(out s b.(0)))))
+	 |
+	 in x(w).( (in w(v).(in w(u).(out v u.(0)))) 
+	 | 
+	 in z(t).(0) )
+	 
+	 This process occurs on p40 of [SW]. *)
+let a = (fresh : chan);
+let b = (fresh : chan);
+let s = (fresh : chan);
+let t = (fresh : chan);
+let u = (fresh : chan);
+let v = (fresh : chan);
+let w = (fresh : chan);
+let x = (fresh : chan);
+let z = (fresh : chan);
+
+let p1 = Res(<<s>>(Gd(Pre(Out((x, s), Gd(Pre(Out((s, a), Gd(
+	Pre(Out((s, b), Gd Inact())))))))))));
+
+let p2 = Gd(Pre(In(w, <<v>>(Gd(Pre(In(w, <<u>>(
+	Gd(Pre(Out((v, u), Gd Inact())))))))))));
+
+let p3 = Par(p1, Gd(Pre(In(x, <<w>>(Par(p2, Gd(
+	Pre(In(z, <<t>>(Gd Inact()))))))))));
+
+print_next p3;
+
+(*********************************************************************
+ END of pi-calculator.ml
+*********************************************************************)
+
