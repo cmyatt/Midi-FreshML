@@ -47,11 +47,9 @@ type semenv where                    (* semantic environment : list of (var * se
   SNil : unit -> semenv,
   SHd : (var * sem) * semenv -> semenv;
 
-let tcons = fun (x : (var * ty) * tyenv) ->
-  let (y, env) = x in THd(y, env);
+let tcons = fun (x : (var * ty) * tyenv) -> THd(x);
 
-let scons = fun (x : (var * sem) * semenv) ->
-  let (y, env) = x in SHd(y, env);
+let scons = fun (x : (var * sem) * semenv) -> SHd(x);
 
 (* Get the type associated with a variable in a typing environment *)
 let tlookup(x : var * tyenv) : ty =

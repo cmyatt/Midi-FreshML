@@ -58,7 +58,7 @@ let subst = fun (x : tyvar * (ty * ty)) ->
   let (a, (t, t')) = x in
   let sub(t' : ty) : ty =
     match t' with
-    | Tyvar b -> if a = b then t else Tyvar b
+    | Tyvar b -> if a = b then t else t'
     | Fun(t1, t2) -> Fun(sub t1, sub t2)
     | All(<<a>>t1) -> All(<<a>>(sub t1))
       (* note that a is automatically fresh for t, so we
@@ -73,7 +73,9 @@ let typ(env : tyenv) : expr -> ty =
     | Lam(t, <<x>>e) -> Fun(t, (typ (cons((x, t), env))) e)
     | App(e1, e2) ->
         (match (typ env) e1 with
-        | Fun(t1, t2) -> if t1 = ((typ env) e2) then t2 else Error("Argument does not match function type")
+        | Fun(t1, t2) -> 
+						if t1 = ((typ env) e2) then t2
+						else Error("Argument does not match function type")
         | _ -> Error("Expression not a function type"))
     | Gen(<<a>>e) -> All(<<a>>((typ env) e))
       (* note that a is automatically fresh for env, so the usual
@@ -229,7 +231,9 @@ let plc_cons =
     <<f>>(App(App(Var f, Var x), App(App(Spec(Var l, Tyvar a'),
     Var x'), Var f))))))))))))));
 
-((typ (Nil ())) plc_cons) = All(<<a>>(Fun(Tyvar a, Fun(a_list, a_list)))); (* true *)
+let cons_t = ((typ (Nil ())) plc_cons);
+
+cons_t = All(<<a>>(Fun(Tyvar a, Fun(a_list, a_list)))); (* true *)
 
 let plc_iter =
   (* /\a. /\a'. \x' : a'. \f : a -> a' -> a'. \l : a_list. l a' x' f *)

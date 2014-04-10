@@ -25,6 +25,8 @@
   let atoms = Hashtbl.create 5;;  (* key: name type id, val: int *)
 
   let debug = true;;
+
+	let print_info = ref true;;
 %}
 
 %token NAME TYPE WHERE IF THEN ELSE MATCH WITH LET REC FUN IN FRESH SWAP LIST
@@ -69,8 +71,8 @@ program:
 ;
 
 user_types:
-  | NAME nty { printf "\n"; types }
-  | TYPE dty ctor_list { printf "type %s = %s\n" $2 $3; cur_types := []; types }
+  | NAME nty { (if !print_info then printf "\n" else ()); types }
+  | TYPE dty ctor_list { (if !print_info then printf "type %s = %s\n" $2 $3 else ()); cur_types := []; types }
 ;
 
 nty:
@@ -78,7 +80,7 @@ nty:
       if Hashtbl.mem atoms $1 then
         (parse_error ("Re-declaration of name type: "^$1); raise Parse_error)
       else
-        (printf "name %s" $1;
+        ((if !print_info then printf "name %s" $1 else ());
         Hashtbl.add atoms $1 0;
         Hashtbl.add types $1 (NameT $1))
     }
@@ -86,7 +88,7 @@ nty:
       if Hashtbl.mem atoms $3 then
         (parse_error ("Re-declaration of name type: "^$3); raise Parse_error)
       else
-        (printf ", %s" $3;
+        ((if !print_info then printf ", %s" $3 else ());
         Hashtbl.add atoms $3 0;
         Hashtbl.add types $3 (NameT $3))
     }

@@ -8,9 +8,9 @@
   (* Update lexbuf positional info *)
   (* type position = {
    *   pos_fname : string;  (* file name *)
-   *   pos_lnum : int;		  (* line number *)
-   *   pos_bol : int;		    (* the offset of the beginning of the line *)
-   *   pos_cnum : int;		  (* the offset of the position *)
+   *   pos_lnum : int;      (* line number *)
+   *   pos_bol : int;       (* the offset of the beginning of the line *)
+   *   pos_cnum : int;      (* the offset of the position *)
    * }
    *)
   let incr_linenum lexbuf =
@@ -408,7 +408,7 @@ let
 
   | 4 ->
 # 74 "lexer.mll"
-       ( if debug then printf "HASH\n" else (); HASH )
+        ( if debug then printf "HASH\n" else (); HASH )
 # 413 "lexer.ml"
 
   | 5 ->
@@ -584,7 +584,7 @@ and __ocaml_lex_comment_rec level lexbuf __ocaml_lex_state =
 
   | 3 ->
 # 109 "lexer.mll"
-        ( comment level lexbuf )
+         ( comment level lexbuf )
 # 589 "lexer.ml"
 
   | 4 ->
