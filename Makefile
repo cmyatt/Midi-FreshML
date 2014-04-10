@@ -7,8 +7,9 @@ fml: parser.mly lexer.mll abSyn.ml tyCheck.ml interpreter.ml run_interpreter.ml
 
 bench: parser.mly lexer.mll abSyn.ml tyCheck.ml interpreter.ml dpBenchmark.ml
 	ocamllex lexer.mll; \
-	ocamlyacc parser.mly; \
+	#ocamlyacc parser.mly;
 	ocamlc abSyn.ml parser.mli; \
+	#ocamlfind ocamlc -o bin/bench-fml abSyn.ml parser.ml lexer.ml tyCheck.ml str.cma interpreter.ml unix.cma benchmark.cma dpBenchmark.ml
 	ocamlfind ocamlopt -noassert -o bin/bench-fml abSyn.ml parser.ml lexer.ml tyCheck.ml str.cmxa interpreter.ml unix.cmxa benchmark.cmxa dpBenchmark.ml
 
 fml-opt: parser.mly lexer.mll abSyn.ml tyCheck.ml interpreter.ml run_interpreter.ml

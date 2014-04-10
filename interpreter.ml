@@ -54,11 +54,17 @@ let gen_atom atoms s =
     NameLiteral(s, n)
   with Not_found -> raise (Run_time_error ("Invalid name type: "^s));;
 
+(* To compare #swaps vs. #permutations *)
+let swap_count = ref 0;;
+let swap_depth = ref 0;;
+
 (*
  * Swap atoms a1 and a2 in expression v.
  * Invariant: is_val v = true
  *)
-let rec swap a1 a2 v =
+let rec swap ?first_call:(first = true) a1 a2 v =
+	(if first then swap_count := !swap_count + 1
+	else swap_depth := !swap_depth + 1);
   (* Expect empty perm if doing eager swapping *)
   let (v', [], p) = v in
   match v' with
@@ -69,10 +75,10 @@ let rec swap a1 a2 v =
   | NameLiteral n -> 
       if n = a1 then (NameLiteral a2, [], p)
       else if n = a2 then (NameLiteral a1, [], p) else (NameLiteral n, [], p)
-  | Ctor(s, e) -> (Ctor(s, (swap a1 a2 e)), [], p)
-  | NameAb(e1, e2) -> (NameAb(swap a1 a2 e1, swap a1 a2 e2), [], p)
+  | Ctor(s, e) -> (Ctor(s, (swap ~first_call:false a1 a2 e)), [], p)
+  | NameAb(e1, e2) -> (NameAb(swap ~first_call:false a1 a2 e1, swap ~first_call:false a1 a2 e2), [], p)
   | Unit -> (Unit, [], p)
-  | Pair(e1, e2) -> (Pair(swap a1 a2 e1, swap a1 a2 e2), [], p)
+  | Pair(e1, e2) -> (Pair(swap ~first_call:false a1 a2 e1, swap ~first_call:false a1 a2 e2), [], p)
   | Lambda(s, t, e, env) -> (Lambda(s, t, e, swap_env a1 a2 env), [], p)
   | RecFunc(s1, s2, t1, t2, e, env) ->
       (RecFunc(s1, s2, t1, t2, e, swap_env a1 a2 env), [], p)
@@ -81,15 +87,24 @@ let rec swap a1 a2 v =
 (* Swap atoms a1 and a2 in the environment list env
  * Only does swaps in the head of the list as per the rules for ((a a') * E)
  *)
-and swap_env a1 a2 env = List.map (fun (x, v) -> (x, swap a1 a2 v)) env;;
+and swap_env a1 a2 env = List.map (fun (x, v) -> (x, swap ~first_call:false a1 a2 v)) env;;
+
+(* Trying to optimize delayed-perms; need to know which operations occur most often *)
+let push_count = ref 0;;
+let permute_count = ref 0;;
+let pi_length = ref 0;;
+let push_perm_count = ref 0;;
 
 (* Add the permutation pi to the value e *)
 let push pi e =
   let (e', pi', ps) = e in
+	push_count := !push_count + 1;
   (e', pi' @ pi, ps);;
 
 (* Apply permutation pi to name a *)
 let permute pi a =
+	permute_count := !permute_count + 1;
+	pi_length := !pi_length + (List.length pi);
   List.fold_left (fun a (a1, a2) -> if a = a1 then a2 else if a = a2 then a1 else a) a pi;;
 
 (*
@@ -98,23 +113,27 @@ let permute pi a =
  * level of its structure, making the outermost constructor manifest.
  *)
 let push_perm v =
-  let permute_env pi env = List.map (fun (x, v) -> (x, push pi v)) env in
   let (e, pi, ps) = v in
-  match e with
-  | IntLiteral n -> (e, [], ps)
-  | RealLiteral n -> (e, [], ps)
-  | BoolLiteral n -> (e, [], ps)
-  | StringLiteral n -> (e, [], ps)
-  | NameLiteral a -> (NameLiteral(permute pi a), [], ps)
-  | Unit -> (Unit, [], ps)
-  | Lambda(s, t, e, env) -> (Lambda(s, t, e, permute_env pi env), [], ps)
-  | RecFunc(s1, s2, t1, t2, e, env) ->
-      (RecFunc(s1, s2, t1, t2, e, permute_env pi env), [], ps)
-  | Ctor(s, v) -> (Ctor(s, push pi v), [], ps)
-  | NameAb((NameLiteral(a), [], p), v) ->
-      (NameAb((NameLiteral(permute pi a), [], p), push pi v), [], ps)
-  | Pair(e1, e2) -> (Pair(push pi e1, push pi e2), [], ps)
-  | _ -> raise (Run_time_error "Got expression but expected value for permutation application");;
+	match pi with
+	| [] -> v
+  | _ ->
+		let permute_env pi env = List.map (fun (x, v) -> (x, push pi v)) env in
+		push_perm_count := !push_perm_count + 1;
+		match e with
+		| IntLiteral n -> (e, [], ps)
+		| RealLiteral n -> (e, [], ps)
+		| BoolLiteral n -> (e, [], ps)
+		| StringLiteral n -> (e, [], ps)
+		| NameLiteral a -> (NameLiteral(permute pi a), [], ps)
+		| Unit -> (Unit, [], ps)
+		| Lambda(s, t, e, env) -> (Lambda(s, t, e, permute_env pi env), [], ps)
+		| RecFunc(s1, s2, t1, t2, e, env) ->
+				(RecFunc(s1, s2, t1, t2, e, permute_env pi env), [], ps)
+		| Ctor(s, v) -> (Ctor(s, push pi v), [], ps)
+		| NameAb((NameLiteral(a), [], p), v) ->
+				(NameAb((NameLiteral(permute pi a), [], p), push pi v), [], ps)
+		| Pair(e1, e2) -> (Pair(push pi e1, push pi e2), [], ps)
+		| _ -> raise (Run_time_error "Got expression but expected value for permutation application");;
 
 let rec calc_ineq delay_perms atoms v1 op v2 =
   match op with
@@ -124,6 +143,7 @@ let rec calc_ineq delay_perms atoms v1 op v2 =
   | Lt -> BoolLiteral(v1 < v2)
   | Lteq -> BoolLiteral(v1 <= v2)
   | Eq ->
+			(* Test up to alpha-equivalence. *)
       (match v1 with
       | NameAb((NameLiteral(s1, n1), [], _), e2) ->
           let NameAb((NameLiteral(s2, n2), [], _), d2) = v2 in
@@ -198,7 +218,6 @@ let bin_operate delay_perms atoms v1 op v2 =
   | _ -> (calc_ineq delay_perms atoms v op v', [], p);;
 
 (* Perform a unary operation on a numeric value *)
-(* TODO update semantics to call cf(-) here *)
 let un_operate op v =
   let (v', _, p) = v in   (* Don't call push_perm - it will have no effect on numeric literals *)
   match v' with
@@ -250,7 +269,8 @@ let rec exp_state delay_perms atoms env fs ast =
             (print_string ("Looking up (" ^ s ^ ", " ^ (string_of_exp (v, pi, p)) ^ ") in env ==> ");
             print_string ((string_of_exp (push_perm (v, pi, p))) ^ "\n"))
           else ());*)
-          if delay_perms then
+					(* TODO check if this is ok - faster to not push_perm here - ok but only if fully push perm on eventual result *)
+          if false && delay_perms then
             val_state delay_perms atoms env fs (push_perm (lookup s env))
           else
             val_state delay_perms atoms env fs (lookup s env)
@@ -289,7 +309,8 @@ let rec exp_state delay_perms atoms env fs ast =
 
 (* Invariant: is_val ast = true *)
 and val_state delay_perms atoms env fs ast =
-  if fs = [] then (env, ast)
+	(* TODO fully push perm on ast here rather than on id lookup *)
+  if fs = [] then (env, push_perm ast)
   else
     (* Permutations will be empty for elements of FS, so ignore them *)
     let (e, [], ps)::xs = fs in
@@ -305,6 +326,7 @@ and val_state delay_perms atoms env fs ast =
     | Swap(a, (EmptySlot, [], _), e) ->
         exp_state delay_perms atoms env ((Swap(a, ast, empty e), [], ps)::xs) e
     | Swap(x, y, (EmptySlot, [], _)) ->
+				(* TODO Do we not want to eagerly swap here regardless? *)
         if delay_perms then
           let NameLiteral(a1), _, _ = push_perm x in
           let NameLiteral(a2), _, _ = push_perm y in
