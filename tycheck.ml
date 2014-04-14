@@ -1,5 +1,3 @@
-(* TODO Produce warnings on re-declaring name- and data-types in same scope *)
-
 open AbSyn;;
 
 exception Type_error of string;;
@@ -34,6 +32,16 @@ let rec count_args t =
  * Returns the new environment created by elaborating the env passed with p : t.
  *)
 let rec elaborate types env pat t ps =
+	(* Check that the intersection of the domains of two association lists
+   * is empty. *)
+	let rec check_doms xs ys =
+		match xs with
+		| [] -> true
+		| (s, _)::zs ->
+				(try
+					let _ = lookup s ys in false
+				with Not_found -> check_doms zs ys)
+	in
   match pat with
   | DontCareP -> []
   | IdP s -> [(s, t)]
@@ -58,7 +66,7 @@ let rec elaborate types env pat t ps =
       | Not_found -> failB ("Constructor "^s^" not recognised") ps
       | Match_failure _ ->
           failB ("Expected function type for constructor '"^s^"'") ps)
-  | NameAbsP(IdP(s1), p) ->
+  (*| NameAbsP(IdP(s1), p) ->
       (match t with
       | NameAbT(t1, t2) ->
           let es = elaborate types env p t2 ps in
@@ -70,36 +78,43 @@ let rec elaborate types env pat t ps =
       | _ -> failB "Expression is not a name abstraction" ps)
   | NameAbsP(DontCareP, p) ->
       (match t with
-      | NameAbT(_, t1) ->
-          let es = elaborate types env p t1 ps in es @ env
-      | _ -> failB "Expression is not a name abstraction" ps)
-	(* TODO Allow any pattern in binding position *)
-  | NameAbsP _ ->
+      | NameAbT(_, t1) -> elaborate types env p t1 ps
+      | _ -> failB "Expression is not a name abstraction" ps)*)
+  (*| NameAbsP _ ->
       failB ("Unexpected pattern in name abstraction binding position. "^
-        "Must be id or _") ps
+        "Must be id or _") ps*)
+	| NameAbsP(p1, p2) ->
+			(match t with
+      | NameAbT(t1, t2) ->
+          let es1 = elaborate types env p1 t1 ps in
+          let es2 = elaborate types env p2 t2 ps in
+          if check_doms es1 es2 then es1 @ es2
+          else failB "Name abstraction pattern re-uses identifiers" ps
+      | _ ->
+          failB "Expression does not match pattern; expected name abstraction type" ps)
   | UnitP -> if t = UnitT then [] else failA "" UnitT t ps
   | ProdP(p1, p2) ->
-      match t with
+      (match t with
       | ProdT(t1, t2) ->
-          (* Check that the intersection of the domains of two associatiolists
-           * is empty. *)
-          let rec check_doms xs ys =
-            match xs with
-            | [] -> true
-            | (s, _)::zs ->
-                (try
-                  let _ = lookup s ys in false
-                with Not_found -> check_doms zs ys)
-          in
           let es1 = elaborate types env p1 t1 ps in
           let es2 = elaborate types env p2 t2 ps in
           if check_doms es1 es2 then es1 @ es2
           else failB "Product pattern re-uses identifiers" ps
       | _ ->
-          failB "Expression does not match pattern; expected product type" ps;;
+          failB "Expression does not match pattern; expected product type" ps);;
 
 (* Bind the identifiers within a pattern to a type in the top-level. *)
 let rec bind_val types tbl pat t ps =
+	(* Check that the intersection of the domains of two association lists
+ 	 * is empty. *)
+	let rec check_doms xs ys =
+		match xs with
+		| [] -> true
+		| (s, _)::zs ->
+				(try
+					let _ = lookup s ys in false
+				with Not_found -> check_doms zs ys)
+	in
   match pat with
   | DontCareP -> t
   | IdP s -> Hashtbl.add tbl s t; t
@@ -116,6 +131,7 @@ let rec bind_val types tbl pat t ps =
       | Not_found -> failB ("Constructor "^s^" not recognised") ps
       | Match_failure _ ->
           failB ("Expected function type for constructor '"^s^"'") ps)
+	(*
   | NameAbsP(IdP(s1), p) ->
       (match t with
       | NameAbT(NameT(s2), t1) ->
@@ -127,21 +143,22 @@ let rec bind_val types tbl pat t ps =
       | _ -> failB "Expression is not a name abstraction" ps)
   | NameAbsP _ ->
       failB ("Unexpected pattern in name abstraction binding position. "^
-        "Must be id or _") ps
+        "Must be id or _") ps *)
+	| NameAbsP(p1, p2) ->
+			(match t with
+      | NameAbT(t1, t2) ->
+          let es1 = elaborate types [] p1 t1 ps in
+          let es2 = elaborate types [] p2 t2 ps in
+          if check_doms es1 es2 then
+            let _ = bind_val types tbl p1 t1 ps in
+            let _ = bind_val types tbl p2 t2 ps in ProdT(t1, t2)
+          else failB "Name abstraction pattern re-uses identifiers" ps
+      | _ ->
+          failB "Expression does not match pattern; expected name abstraction type" ps)
   | UnitP -> if t = UnitT then UnitT else failA "" UnitT t ps
   | ProdP(p1, p2) ->
-      match t with
+      (match t with
       | ProdT(t1, t2) ->
-          (* Check that the intersection of the domains of two association lists
-           * is empty. *)
-          let rec check_doms xs ys =
-            match xs with
-            | [] -> true
-            | (s, _)::zs ->
-                (try
-                  let _ = lookup s ys in false
-                with Not_found -> check_doms zs ys)
-          in
           let es1 = elaborate types [] p1 t1 ps in
           let es2 = elaborate types [] p2 t2 ps in
           if check_doms es1 es2 then
@@ -149,7 +166,7 @@ let rec bind_val types tbl pat t ps =
             let _ = bind_val types tbl p2 t2 ps in ProdT(t1, t2)
           else failB "Product pattern re-uses identifiers" ps
       | _ ->
-          failB "Expression does not match pattern; expected product type" ps;;
+          failB "Expression does not match pattern; expected product type" ps);;
 
 (* Print contents of the environment - for debugging. *)
 let rec print_env env =
@@ -183,11 +200,7 @@ and get_dec_type types top_level env decl ps =
       else failA "Function body type does not match that of function" t3 t2 ps
   | _ -> failB "Rec func declaration does not contain recursive function" ps
 
-(* TODO Come up with a more efficient data structure than association lists for
- * the environment -- needs to be able to handle scope:
-   * let x = 5 in (let x = 6 in x+x end) + x end;;  => 17
-   * env = [(x, 5)], env = [(x, 6), (x, 5)], env = [(x, 5)], env = []
- *)
+
 (*
  * types - maps name and data type names to their types
  * top_level - maps top-level declarations to their types (usually functions)
@@ -251,10 +264,10 @@ and get_type types top_level env ast =
           (let (e5, _, _) = e1 in Printf.printf "x : %s\n" (string_of_expr e5);
           failB "Expected name types in swap" p))
   | NameAb(e1, e2), p ->
-			(* Allow generalised types in binding position and so do not require that
+			(* Allowing generalised types in binding position and so do not require that
 				 e1 have some name type. Functions are not allowed in binding position
-				 but this is detected at run-time (similar to how function equality is
-				 handled). *)
+				 during deconstruction but this is detected at run-time (similar to how
+				 function equality is handled). *)
 			let t1 = get_type types top_level env e1 in
   		let t2 = get_type types top_level env e2 in NameAbT(t1, t2)
   | Unit, p -> UnitT

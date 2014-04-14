@@ -142,12 +142,7 @@ type_name:
       try let t = Hashtbl.find types $1 in t with
       Not_found -> parse_error ("Undefined identifier: "^$1); raise Parse_error
     }
-  | DBL_LT ID DBL_GT type_name {
-      try NameAbT(Hashtbl.find types $2, $4)
-      with Not_found ->
-          parse_error ("Undefined identifier: "^$2);
-					raise Parse_error
-    }
+  | DBL_LT type_name DBL_GT type_name { NameAbT($2, $4) }
   | UNIT_T { UnitT }
   | type_name STAR type_name { ProdT($1, $3) }
   | type_name ARROW type_name { FuncT($1, $3) }

@@ -288,8 +288,38 @@ let rec calc_ineq delay_perms atoms v1 op v2 =
           else
             let (x, _, _), (y, _, _) = (swap (s1, n1) a e2), (swap (s2, n2) a d2) in
             calc_ineq delay_perms atoms x Eq y
+			| NameAb(e1, e2) ->
+					(* Generate the permutations for two algebraic supports.
+						 Assumes the supports are for structurally equivalent values
+						 (meaning it's safe to pair the nth atom of each support with
+						 the same newly generated atom).
+						 If this isn't the case (e.g. different c'tors used in binding
+						 position) then the generated permutations are irrelevant since
+						 the values will be structurally unequal and calc_ineq is
+						 guaranteed to return false.
+					*)
+					let rec gen_pi xs ys pix piy =
+						match xs with
+						| [] -> (pix, piy)
+						| (s, n)::xs ->
+								let y::ys = ys in
+								let NameLiteral(a) = gen_atom atoms s in
+								gen_pi xs ys (((s, n), a)::pix) ((y, a)::piy)
+					in
+          let NameAb(d1, d2) = v2 in
+					let supe = algebraic_support delay_perms e1 in
+					let supd = algebraic_support delay_perms d1 in
+					let pie, pid = gen_pi supe supd [] [] in
+					let swp = List.fold_left (fun v (a1, a2) -> swap a1 a2 v) in
+					let f = if delay_perms then (fun x y -> push_perm (push x y)) else (fun x y -> swp y x) in
+					let (x, _, _), (y, _, _) = f pie e1, f pid d1 in
+						let BoolLiteral(b) as result = calc_ineq delay_perms atoms x Eq y in
+						if b then
+            	let (x, _, _), (y, _, _) = f pie e2, f pid d2 in
+							calc_ineq delay_perms atoms x Eq y
+						else result
       | Ctor(s1, e) ->
-          let Ctor(s2, e') = v2 in 
+          let Ctor(s2, e') = v2 in
           if s1 = s2 then
             if delay_perms then
               let (e1, _, _) = push_perm e in
@@ -444,7 +474,6 @@ let rec exp_state delay_perms atoms env fs ast =
 
 (* Invariant: is_val ast = true *)
 and val_state delay_perms atoms env fs ast =
-	(* TODO fully push perm on ast here rather than on id lookup *)
   if fs = [] then (env, fully_push ast)
   else
     (* Permutations will be empty for elements of FS, so ignore them *)
@@ -521,6 +550,7 @@ and match_init delay_perms atoms env ms fs is_top ast =
 and match_state delay_perms atoms env ms fs is_top ast =
   (* Permutations will be empty for elements of FS, so ignore them *)
   let (e, [], ps)::xs = fs in
+	
   (* Match against a literal pattern *)
   let handle_literal x y p e =
     if x = y then exp_state delay_perms atoms env xs e
@@ -535,6 +565,35 @@ and match_state delay_perms atoms env ms fs is_top ast =
           ((Match((EmptySlot, [], p), br), [], ps)::(List.tl xs)) v)
     else raise (Run_time_error "Match failed: could not match literal")
   in
+	
+	(* Get the freshened versions of <<v1>>v2 *)
+	let handle_gen_abst ast =
+		let (NameAb(v1, v2), pi, p3) = ast in
+		let (v1', _, _) = v1 in
+		(* v1' cannot be have function type since we can't accurately calculate
+			 the algebraic support of functions. Freshening all atoms in
+			 an approximation of the support may be unsound. *)
+		(match v1' with
+		| Lambda _ -> raise (Run_time_error "Invalid value in binding position")
+		| RecFunc _ -> raise (Run_time_error "Invalid value in binding position")
+		| _ ->
+				(* For generalised abstraction patterns:
+						<<x>>x' = <<v>>v'
+					 Assign to x' the value produced by freshening v' with all the atoms
+					 which occur in (algebraic_support v).
+					 Assign to x all the value produced by freshening v with all the atoms 
+					 which occur in (algebraic_support v).
+				*)
+				(* Generate fresh atoms for all atoms in the algebraic support of v1 *)
+				let sup = algebraic_support delay_perms v1 in
+				let pi' = List.map (fun (s, n) -> let NameLiteral(a) = gen_atom atoms s in ((s, n), a)) sup in
+				(* Swap/push these new atoms for the old ones in both v1 and v2 *)
+				let swp = List.fold_left (fun v (a1, a2) -> swap a1 a2 v) in
+				let v1' = if delay_perms then push pi (push pi' v1) else swp v1 pi' in
+				let v2' = if delay_perms then push pi (push pi' v2) else swp v2 pi' in
+				(v1', v2'))
+	in
+
   match e with
   | Let(ValBind(DontCareP, _), e) -> exp_state delay_perms atoms env xs e
   | Let(ValBind(IdP(s), (EmptySlot, [], _)), e) ->
@@ -596,25 +655,14 @@ and match_state delay_perms atoms env ms fs is_top ast =
 					match_state delay_perms atoms (cons (x, (NameLiteral(a'), [], p2)) env) ms
 						((Let(ValBind(pat, (EmptySlot, [], p1)), e'), [], ps)::xs) is_top v'
 			| NameAb(v2, v3) ->
-					(* For generalised abstraction patterns:
-							<<x>>x' = <<v>>v'
-						 Assign to x' the value produced by freshening v' with all the atoms
-						 which occur in (algebraic_support v).
-						 Assign to x all the value produced by freshening v with all the atoms 
-						 which occur in (algebraic_support v).
-					*)
-					(* Generate fresh atoms for all atoms in the algebraic support of v2 *)
-					let sup = algebraic_support delay_perms v2 in
-					let pi' = List.map (fun (s, n) -> let NameLiteral(a) = gen_atom atoms s in ((s, n), a)) sup in
-					(* Swap/push these new atoms for the old ones in both v2 and v3 *)
-					let v2' = if delay_perms then push pi (push pi' v2)
-										else List.fold_left (fun v (a1, a2) -> swap a1 a2 v) v2 pi'
-					in
-					let v3' = if delay_perms then push pi (push pi' v3)
-										else List.fold_left (fun v (a1, a2) -> swap a1 a2 v) v3 pi'
-					in
+					let v2', v3' = handle_gen_abst ast in
 					match_state delay_perms atoms (cons (x, v2') env) ms
 						((Let(ValBind(pat, (EmptySlot, [], p1)), e), [], ps)::xs) is_top v3')
+  | Let(ValBind(NameAbsP(pat1, pat2), (EmptySlot, [], p1)), e) ->
+			let v1, v2 = handle_gen_abst ast in
+			match_state delay_perms atoms env ms
+				((Let(ValBind(pat1, (EmptySlot, [], p1)),
+					(Let(ValBind(pat2, v2), e), [], ps)), [], ps)::xs) is_top v1
   | Let(ValBind(UnitP, _), e) -> exp_state delay_perms atoms env xs e
   | Let(ValBind(ProdP(pat1, pat2), (EmptySlot, [], p1)), e) ->
       let Pair(v1, v2), [], _ = if delay_perms then push_perm ast else ast in
