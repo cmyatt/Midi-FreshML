@@ -17,7 +17,7 @@
   (* Expect cur_types to be non-empty whenever typ_opts is called. *)
   let typ_opts prefix =
     match !cur_types with
-    | x::[] -> x
+    | x::[] -> "α -> " ^ x
     | xs -> prefix^"{"^(List.fold_left (fun x y -> if x = "" then y else x^", "^y) "" xs)^"}";;
 
   let types = Hashtbl.create 50;; (* key: type name, val: actual type *)
@@ -115,7 +115,7 @@ ctor:
       | FuncT(t1, DataT(s)) ->
           if List.mem s !cur_types then ()
           else
-            (parse_error ("Got "^s^" but expected "^(typ_opts "one of ")^" in constructor "^$1);
+            (parse_error ("Got "^s^" but expected "^(typ_opts "α -> β where β ∈ ")^" in constructor "^$1);
             cur_types := [];
             raise Parse_error)
       | _ ->
@@ -163,7 +163,14 @@ dec:
 
 pattern:
   | DONT_CARE { DontCareP }
-  | ID { IdP($1) }
+  | ID {
+			try
+        let CtorT _ = Hashtbl.find types $1 in
+				(parse_error ("Constructor " ^ $1 ^ " does not take 0 arguments"); raise Parse_error)
+			with
+			| Not_found -> IdP($1)
+			| Match_failure _ -> IdP($1)	(* don't print warning about re-use of type name - OCaml doesn't *)
+		}
   | INT { IntP($1) }
   | REAL { RealP($1) }
   | BOOL { BoolP($1) }
@@ -183,9 +190,15 @@ exp:
 ;
 
 sub_exp:
-  | ID { (Id $1, [], get_pos 1) }
+  | ID {
+  		(*try
+        let CtorT _ = Hashtbl.find types $1 in
+				(* If args provided then next rule (ID exp) would match, so 0 args provided *)
+				(parse_error ("Constructor " ^ $1 ^ " does not take 0 arguments"); raise Parse_error)
+			with Not_found ->*) (Id $1, [], get_pos 1)
+	}
   | ID exp {
-      try
+  		try
         let t = Hashtbl.find types $1 in
         (match t with
         | CtorT _ -> (Ctor($1, $2), [], get_pos 1)

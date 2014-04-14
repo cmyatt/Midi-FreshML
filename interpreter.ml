@@ -593,7 +593,7 @@ and match_state delay_perms atoms env ms fs is_top ast =
 				let v2' = if delay_perms then push pi (push pi' v2) else swp v2 pi' in
 				(v1', v2'))
 	in
-
+	(* TODO disallow using name- and data-types as ids *)
   match e with
   | Let(ValBind(DontCareP, _), e) -> exp_state delay_perms atoms env xs e
   | Let(ValBind(IdP(s), (EmptySlot, [], _)), e) ->
@@ -647,7 +647,7 @@ and match_state delay_perms atoms env ms fs is_top ast =
 
 						 (2) since user doesn't care about actual values, just report stale values.
 								 Not very nice when evaluate ids bound in the pattern and get different
-								 values, bu it does save a lot of work and doesn't alter functionality.
+								 values, but it does save a lot of work and doesn't alter functionality.
 
 							Going with (2).
 					*)
