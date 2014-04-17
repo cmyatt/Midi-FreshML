@@ -9,7 +9,7 @@
 
   let parse_error s =
     let pos = Parsing.symbol_start_pos () in
-    printf "[Error] %s [line %d, col %d]\n" s pos.pos_lnum (pos.pos_cnum - pos.pos_bol);
+    printf "[Error] %s (line %d, col %d)\n" s pos.pos_lnum (pos.pos_cnum - pos.pos_bol);
     flush stdout;;
   
   let cur_types = ref [];;  (* contains the ids of the types in the current type ...; definition. *)
@@ -151,7 +151,6 @@ type_name:
 
 rec_func:
   | ID L_PAREN ID COLON type_name R_PAREN COLON type_name EQUAL {
-      Hashtbl.add types $1 (FuncT($5, $8));
       ($1, $3, $5, $8)
     }
 ;

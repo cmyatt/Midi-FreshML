@@ -52,6 +52,13 @@ and expr =
   | Match of exp * branch
   | Let of dec * exp
   | TopLet of dec * position
+	(* Used to solve the problem of matching pair and name abstraction patterns.
+		 The (branch, exp) list stores the 'continuation' - the remaining cases of
+		 the current match statement. Otherwise translating a pair pattern into
+		 nested let expressions means that the 'continuation' is lost in the event
+		 of the first pattern matching and the second (inner) pattern failing.
+	*)
+	| LetContinuation of dec * exp * (branch * exp) list
   | BinaryOp of exp * bin_op * exp
   | UnaryOp of un_op * exp
   | EmptySlot   (* used in interpreter as '_' in frame stack - so we can
@@ -118,7 +125,7 @@ let rec is_val e =
   (* Must take an arg, so if env empty, then arg not yet bound,
      so not yet an executable value *)
   | Lambda(_, _, _, env) -> not(env = [])
-  | RecFunc(_, _, _, _, _, env) -> (env = [])
+  | RecFunc(_, _, _, _, _, env) -> not(env = [])
   | Ctor(_, e) -> is_val e
   | NameAb(e1, e2) -> is_val e1 && is_val e2
   | Pair(e1, e2) -> is_val e1 && is_val e2
@@ -164,7 +171,13 @@ let string_of_bin_op op =
   | Add -> "+"
   | Sub -> "-"
   | Div -> "/"
-  | Mult -> "*";;
+  | Mult -> "*"
+	| Gt -> ">"
+	| Gteq -> ">="
+	| Lt -> "<"
+	| Lteq -> "<="
+	| Eq -> "="
+	| Concat -> "^";;
 
 let string_of_un_op op =
   match op with
@@ -258,10 +271,13 @@ and string_of_expr e =
   | Match((e, _, _), b) -> clip_str ("match "^(string_of_expr e)^" with "^(string_of_branch b))
   | Let(d, (e, _, _)) -> clip_str ("let "^(string_of_dec d)^" in "^(string_of_expr e))
   | TopLet(d, _) -> clip_str ("let "^(string_of_dec d))
+  | LetContinuation(d, (e, _, _), _) ->
+			clip_str ("let (continuation)"^(string_of_dec d)^" in "^(string_of_expr e))
   | BinaryOp((e1, _, _), op, (e2, _, _)) ->
       clip_str ((string_of_expr e1) ^ (string_of_bin_op op) ^ (string_of_expr e2))
   | UnaryOp(op, (e, _, _)) -> clip_str ((string_of_un_op op) ^ (string_of_expr e))
   | EmptySlot -> clip_str "_"
+	| EofFunc -> "EOF"
   | Directive(d, xs) ->
       clip_str ((string_of_directive d) ^ (List.fold_left (fun x y -> x^" "^y) "" xs));;
 (*
@@ -296,6 +312,7 @@ and string_of_expr e =
       clip_str ((string_of_exp e1) ^ (string_of_bin_op op) ^ (string_of_exp e2))
   | UnaryOp(op, e) -> clip_str ((string_of_un_op op) ^ (string_of_exp e))
   | EmptySlot -> clip_str "_"
+	| EofFunc -> clip_str "EOF"
   | Directive(d, xs) ->
       clip_str ((string_of_directive d) ^ (List.fold_left (fun x y -> x^" "^y) "" xs))
 

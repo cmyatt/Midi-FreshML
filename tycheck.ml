@@ -60,29 +60,12 @@ let rec elaborate types env pat t ps =
   | CtorP(s, p) ->
       (try
         let CtorT(FuncT(t1, t2)) = Hashtbl.find types s in
-        if t=t2 then elaborate types env p t1 ps
+        if t = t2 then elaborate types env p t1 ps
         else failA "Expression does not match pattern type" t t2 ps
       with
       | Not_found -> failB ("Constructor "^s^" not recognised") ps
       | Match_failure _ ->
           failB ("Expected function type for constructor '"^s^"'") ps)
-  (*| NameAbsP(IdP(s1), p) ->
-      (match t with
-      | NameAbT(t1, t2) ->
-          let es = elaborate types env p t2 ps in
-          (try
-            let _ = lookup s1 es in
-            failB ("Name identifier "^s1^" already exists in this scope") ps
-          with
-          | Not_found -> (elaborate types env (IdP s1) t1 ps) @ (es @ env))
-      | _ -> failB "Expression is not a name abstraction" ps)
-  | NameAbsP(DontCareP, p) ->
-      (match t with
-      | NameAbT(_, t1) -> elaborate types env p t1 ps
-      | _ -> failB "Expression is not a name abstraction" ps)*)
-  (*| NameAbsP _ ->
-      failB ("Unexpected pattern in name abstraction binding position. "^
-        "Must be id or _") ps*)
 	| NameAbsP(p1, p2) ->
 			(match t with
       | NameAbT(t1, t2) ->
@@ -131,19 +114,6 @@ let rec bind_val types tbl pat t ps =
       | Not_found -> failB ("Constructor "^s^" not recognised") ps
       | Match_failure _ ->
           failB ("Expected function type for constructor '"^s^"'") ps)
-	(*
-  | NameAbsP(IdP(s1), p) ->
-      (match t with
-      | NameAbT(NameT(s2), t1) ->
-          let _ = bind_val types tbl p t1 ps in (Hashtbl.add tbl s1 (NameT s2); t)
-      | _ -> failB "Expression is not a name abstraction" ps)
-  | NameAbsP(DontCareP, p) ->
-      (match t with
-      | NameAbT(NameT(s2), t1) -> let _ = bind_val types tbl p t1 ps in t
-      | _ -> failB "Expression is not a name abstraction" ps)
-  | NameAbsP _ ->
-      failB ("Unexpected pattern in name abstraction binding position. "^
-        "Must be id or _") ps *)
 	| NameAbsP(p1, p2) ->
 			(match t with
       | NameAbT(t1, t2) ->
@@ -242,7 +212,7 @@ and get_type types top_level env ast =
       | Not_found -> failB ("Name type "^s^" has not been declared") p)
 	| FreshFor(e1, e2), p ->
 			(try
-				let NameT(s) = get_type types top_level env e1 in
+				let NameT _ = get_type types top_level env e1 in
 				let _ = get_type types top_level env e2 in	(* still need to check e2 has a valid type *)
 				BoolT
 			with Match_failure _ -> failB "Expected name type in freshfor expression" p)
@@ -329,5 +299,6 @@ and get_type types top_level env ast =
       (match t with
       | IntT -> IntT
       | RealT -> RealT
-      | _ -> failB "Expected numeric type for unary operation" p);;
+      | _ -> failB "Expected numeric type for unary operation" p)
+	| _ -> raise (Type_error "Unexpected expression in typechecker");;
 

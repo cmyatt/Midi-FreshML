@@ -9,7 +9,6 @@ exception Run_time_error of string;;
 (* x : 'a
  * env : (('a, 'b) list) list
  * Return true iff x is in the head of the env list
- * TODO look into standard library assoc list functions
  *)
 let rec lookup s env =
   let rec look x ys =
@@ -348,7 +347,8 @@ let rec calc_ineq delay_perms atoms v1 op v2 =
           let NameLiteral(s2, n2) = v2 in
           Printf.printf "name eq: (%s, %d) = (%s, %d)\n" s1 n1 s2 n2;
           BoolLiteral(n1 = n2)*)
-      | _ -> BoolLiteral(v1 = v2));;
+      | _ -> BoolLiteral(v1 = v2))
+	| _ -> raise (Run_time_error "Unexpected operator whilst calculating inequality");;
 
 (* Perform a binary operation on two values
  *  - Applies any permutations to those values
@@ -432,8 +432,7 @@ let rec exp_state delay_perms atoms env fs ast =
             (print_string ("Looking up (" ^ s ^ ", " ^ (string_of_exp (v, pi, p)) ^ ") in env ==> ");
             print_string ((string_of_exp (push_perm (v, pi, p))) ^ "\n"))
           else ());*)
-					(* TODO check if this is ok - faster to not push_perm here - ok but only if fully push perm on eventual result *)
-          if false && delay_perms then
+          if delay_perms then
             val_state delay_perms atoms env fs (push_perm (lookup s env))
           else
             val_state delay_perms atoms env fs (lookup s env)
@@ -471,6 +470,9 @@ let rec exp_state delay_perms atoms env fs ast =
     | TopLet(RecF(RecFunc(s1, s2, t1, t2, e, _)), p) ->
         let f = (RecFunc(s1, s2, t1, t2, e, List.hd env), [], p) in
         val_state delay_perms atoms (cons (s1, f) env) fs f
+    | LetContinuation(ValBind(pat, e1), e2, ms) ->
+        exp_state delay_perms atoms env ((LetContinuation(ValBind(pat, empty e1), e2, ms), [], ps)::fs) e1
+		| _ -> raise (Run_time_error ("Unexpected expression: " ^ (string_of_expr e) ^ " in exp_state"))
 
 (* Invariant: is_val ast = true *)
 and val_state delay_perms atoms env fs ast =
@@ -487,8 +489,9 @@ and val_state delay_perms atoms env fs ast =
 				exp_state delay_perms atoms env
 					((FreshFor((NameLiteral(a), [], p), empty e), [], ps)::xs) e
 		| FreshFor((NameLiteral(a), [], _), (EmptySlot, [], _)) ->
-				(* a freshfor e iff a notin algebraic_support of e *)
-				(env, (BoolLiteral(not(List.mem a (algebraic_support delay_perms ast))), [], ps))
+				(* a freshfor e iff a not-in algebraic_support of e *)
+				val_state delay_perms atoms env xs
+					(BoolLiteral(not(List.mem a (algebraic_support delay_perms ast))), [], ps)
     | If((EmptySlot, [], _), e1, e2) ->
         let BoolLiteral(b), _, _ = ast in
         exp_state delay_perms atoms env xs (if b then e1 else e2)
@@ -497,7 +500,6 @@ and val_state delay_perms atoms env fs ast =
     | Swap(a, (EmptySlot, [], _), e) ->
         exp_state delay_perms atoms env ((Swap(a, ast, empty e), [], ps)::xs) e
     | Swap(x, y, (EmptySlot, [], _)) ->
-				(* TODO Do we not want to eagerly swap here regardless? *)
         if delay_perms then
           let NameLiteral(a1), _, _ = push_perm x in
           let NameLiteral(a2), _, _ = push_perm y in
@@ -538,6 +540,9 @@ and val_state delay_perms atoms env fs ast =
     | TopLet(ValBind(pat, (EmptySlot, [], p)), _) ->
         match_state delay_perms atoms env []
           ((Let(ValBind(pat, (EmptySlot, [], p)), ast), [], ps)::xs) true ast
+    | LetContinuation(ValBind(pat, (EmptySlot, [], p)), e, ms) ->
+        match_state delay_perms atoms env ms
+          ((Let(ValBind(pat, (EmptySlot, [], p)), e), [], ps)::xs) false ast
     | _ -> raise (Run_time_error "Head of frame stack has no empty slot")
 
 (* Duplicate (hd env) and push EofFunc onto F to create a new scope for Match exprs *)
@@ -563,7 +568,7 @@ and match_state delay_perms atoms env ms fs is_top ast =
         *)
         val_state delay_perms atoms (List.tl env)
           ((Match((EmptySlot, [], p), br), [], ps)::(List.tl xs)) v)
-    else raise (Run_time_error "Match failed: could not match literal")
+    else raise (Run_time_error ("Match failed: could not match literal" ^ (string_of_pos ps)))
   in
 	
 	(* Get the freshened versions of <<v1>>v2 *)
@@ -593,7 +598,6 @@ and match_state delay_perms atoms env ms fs is_top ast =
 				let v2' = if delay_perms then push pi (push pi' v2) else swp v2 pi' in
 				(v1', v2'))
 	in
-	(* TODO disallow using name- and data-types as ids *)
   match e with
   | Let(ValBind(DontCareP, _), e) -> exp_state delay_perms atoms env xs e
   | Let(ValBind(IdP(s), (EmptySlot, [], _)), e) ->
@@ -621,14 +625,14 @@ and match_state delay_perms atoms env ms fs is_top ast =
         val_state delay_perms atoms (List.tl env)
           ((Match((EmptySlot, [], p), br), [], ps)::(List.tl xs)) v)
       else
-        raise (Run_time_error ("Match failed: could not match constructor "^s2))
-  | Let(ValBind(NameAbsP(DontCareP, pat), (EmptySlot, [], p1)), e) ->
+        raise (Run_time_error ("Match failed: could not match constructor "^s2^" "^(string_of_pos ps)))
+  (*| Let(ValBind(NameAbsP(DontCareP, pat), (EmptySlot, [], p1)), e) ->
       let NameAb((NameLiteral(s, n), [], p2), v), pi, p3 = ast in
       let NameLiteral(a') = gen_atom atoms s in
       let v' = if delay_perms then push pi (push [a', (s, n)] v) else swap a' (s, n) v in
       let e' = e in
       match_state delay_perms atoms env ms
-        ((Let(ValBind(pat, (EmptySlot, [], p1)), e'), [], ps)::xs) is_top v'
+        ((Let(ValBind(pat, (EmptySlot, [], p1)), e'), [], ps)::xs) is_top v'*)
   | Let(ValBind(NameAbsP(IdP(x), pat), (EmptySlot, [], p1)), e) ->
 			let (v1, pi, p3) = ast in
 			(match v1 with
@@ -657,20 +661,28 @@ and match_state delay_perms atoms env ms fs is_top ast =
 			| NameAb(v2, v3) ->
 					let v2', v3' = handle_gen_abst ast in
 					match_state delay_perms atoms (cons (x, v2') env) ms
-						((Let(ValBind(pat, (EmptySlot, [], p1)), e), [], ps)::xs) is_top v3')
+						((Let(ValBind(pat, (EmptySlot, [], p1)), e), [], ps)::xs) is_top v3'
+			| _ -> raise (Run_time_error "Unexpected value whilst matching name abstraction"))
   | Let(ValBind(NameAbsP(pat1, pat2), (EmptySlot, [], p1)), e) ->
 			let v1, v2 = handle_gen_abst ast in
+			(* Problem: after the first let matches, ms is discarded as we move to exp_state
+								  and then eventually back to match_state to handle the second let. If
+									this let fails then there is no ms to fall back on and so we get a
+									match error.
+				 Solution: use LetContinuation to store the remaining match cases with the
+				 					 inner let expression.
+			*)
 			match_state delay_perms atoms env ms
 				((Let(ValBind(pat1, (EmptySlot, [], p1)),
-					(Let(ValBind(pat2, v2), e), [], ps)), [], ps)::xs) is_top v1
+					(LetContinuation(ValBind(pat2, v2), e, ms), [], ps)), [], ps)::xs) is_top v1
   | Let(ValBind(UnitP, _), e) -> exp_state delay_perms atoms env xs e
   | Let(ValBind(ProdP(pat1, pat2), (EmptySlot, [], p1)), e) ->
       let Pair(v1, v2), [], _ = if delay_perms then push_perm ast else ast in
+			(* See problem and solution above for reasoning behind LetContinuation *)
       match_state delay_perms atoms env ms
         ((Let(ValBind(pat1, (EmptySlot, [], p1)),
-          (Let(ValBind(pat2, v2), e), [], ps)), [], ps)::xs) is_top v1
+          (LetContinuation(ValBind(pat2, v2), e, ms), [], ps)), [], ps)::xs) is_top v1
   | _ -> raise (Run_time_error "Unexpected expression in MATCH state");;
-
 
 (*********************************************************************************
  * The following section runs the interpreter (as a REPL or operating on a given
@@ -708,17 +720,14 @@ let rec repl_lexbuf () =
         leftover := "";
         s;;
 
-(* TODO Want to abandon current expr on encountering the first error
- * - Getting too many useless error messages atm
- *)
-
-let rec run get_lexbuf top_lev_env delay_perms =
+let rec run ?stop_on_error:(stp_err = true) get_lexbuf top_lev_env delay_perms =
   let env = ref [[]] in
+	let go = ref true in
   try
-    while true do
+    while !go do
       (try
         let atoms, types, es = Parser.program Lexer.scan (get_lexbuf ()) in
-        Parsing.clear_parser(); (* free memory used by the parser TODO test if has any effect *)
+        Parsing.clear_parser(); (* free memory used by the parser *)
         (match es with
         | [] -> ()
         | (Directive(Quit, xs), _, p)::[] ->
@@ -748,17 +757,17 @@ let rec run get_lexbuf top_lev_env delay_perms =
                 print_string ("val " ^ s ^ " : " ^ (string_of_typ t) ^ " = <fun>\n")
             | _ -> print_string ("- : "^(string_of_typ t)^" = "^(string_of_expr v)^"\n"))
           with
-          | Type_error s -> print_string ("[Error] "^s^"\n")
+          | Type_error s -> print_string ("[Error] "^s^"\n"); go := stp_err
           | Run_time_error s -> print_string ("[Error] "^s^"\n")
           | Stack_overflow -> print_string "[Error] Stack overflow\n")
         | _ -> print_string "Parse error: multiple top-level expressions parsed.\n")
       with
-      | Lexer.Lexer_error s -> print_string ("[Error] "^s^"\n")
+      | Lexer.Lexer_error s -> print_string ("[Error] "^s^"\n"); go := stp_err
       | Invalid_argument _ ->
           (*let pos = lexbuf.lex_curr_p in*)
-          Printf.printf "[Error] Syntax error\n"
+          Printf.printf "[Error] Syntax error\n"; go := stp_err
           (* [line %d, col %d]\n pos.pos_lnum (pos.pos_cnum - pos.pos_bol) *)
-      | Parsing.Parse_error -> ())(*print_string "[error] syntax error\n"; skip_error get_lexbuf)*)
+      | Parsing.Parse_error -> (); go := stp_err)
     done; !env
   with End_of_file -> !env;;
 
