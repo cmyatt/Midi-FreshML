@@ -99,7 +99,7 @@ let subst (x : chan * chan) : proc -> proc =
   let renameg (f : prefix -> prefix) : gsum -> gsum =
 		let g(m : gsum) : gsum =
 			match m with
-			| Inact -> Inact
+			| Inact _ -> Inact ()
 			| Pre a -> Pre(f a)
 			| Plus(m1, m2) -> Plus(g m1, g m2)
 		in g
@@ -189,7 +189,7 @@ let mapPartial(f : value -> value_option) : value_list -> value_list =
 		| Nil _ -> Nil ()
     | Hd(x, xs') -> 
 				(match f x with
-				| None -> map xs'
+				| None _ -> map xs'
 				| Some y -> cons(y, map xs'))
   in map;
 
@@ -470,7 +470,7 @@ let print_next = fun (p : proc) ->
 		let f = pr_p(pr pr_g) in
 		let ((e, st), (prec, m)) = x in
 		match m with
-		| Inact -> ("0", st)
+		| Inact _ -> ("0", st)
 		| Pre a -> f((e, st), (2, a))
 		| Plus(m1, m2) ->
 				let (str1, st1) = pr_g((e, st), (0, m1)) in

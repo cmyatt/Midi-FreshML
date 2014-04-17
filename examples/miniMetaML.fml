@@ -1,0 +1,301 @@
+(**********************************************************************************
+
+	miniMetaML.fml
+	
+	A semantics-based interpreter for a minature, untyped MetaML.
+	The main function is den_0.
+
+  Ported from Fresh OCaml example by A.M.Pitts.
+
+  C.G.Myatt
+	2014-03-10
+ 
+**********************************************************************************)
+
+(********
+	Syntax
+*********)
+
+name var;	(* value identifiers *)
+
+(* expressions *)
+type exp where
+	Vid : var -> exp,										(* x *) 
+  Fn : <<var>>exp -> exp,							(* \x. e *)
+  Fun : <<var>>(<<var>>exp) -> exp,		(* fun f x = e *) 
+  App : exp * exp -> exp,							(* e1 e2 *) 
+  Run : exp -> exp,										(* run e *) 
+  Bra : exp -> exp,										(* <e> *) 
+  Esc : exp -> exp,										(* ~e *)
+  Let : exp * (<<var>>exp) -> exp,		(* let x = e1 in e2 *)         
+  Num : int -> exp,										(* m *)                        
+  Ope : exp * (string * exp) -> exp,	(* e1 op e2 *)       
+  Ifz : exp * (exp * exp) -> exp;			(* if e1 = 0 then e2 else e3 *)
+
+(**********
+ Semantics 
+***********)
+
+type sem0, sem where
+(* sem0: stage-0 denotations - note how simple they are! *)
+  Fn0 : (sem0 -> sem0) -> sem0, (* extensional function *)
+  Bra0 : sem -> sem0,           (* bracketed code *)
+  Num0 : int -> sem0,           (* numeral *)
+	Not_found : unit -> sem0,			(* no exceptions in Midi-FreshML *)
+	Error0 : string -> sem0,
+(* sem: stage-s denotations, for s > 0 *)
+	VidS : var -> sem,                  (* variable *)
+  FnS : <<var>>sem -> sem,           	(* function abstraction *)
+  FunS : <<var>>(<<var>>sem) -> sem,	(* recursive function abstraction *)
+  AppS : sem * sem -> sem,           	(* application *)
+  RunS : sem -> sem,                  (* run *)
+  BraS : sem -> sem,                  (* bracketed code *)           
+  EscS : sem -> sem,                  (* escaped code *)
+  LetS : sem * (<<var>>sem) -> sem,   (* let code *)
+  NumS : int -> sem,                  (* numeral *)
+  OpeS : sem * (string * sem) -> sem, (* arithmetic operation on code *)
+  IfzS : sem * (sem * sem) -> sem,    (* conditional code *)
+  Reify : sem0 -> sem,              	(* reified stage-0 denotation *)
+	Error : string -> sem;							(* no exceptions in Midi-FreshML *)
+
+(* valuations: (var * sem0) list *)
+type valu where
+	Nil : unit -> valu,
+	Hd : (var * sem0) * valu -> valu;
+
+let lookup (x : var * valu) : sem0 =
+	match x with
+	| (_, Nil ()) -> Not_found()
+	| (v, Hd((v', s), xs)) -> if v = v' then s else lookup(v, xs);
+
+(*************
+  Interpreter
+**************)
+
+(* The following "apply" functions are used in the reflection functions
+   when it comes to reflecting values of the foem "Reify d" down a stage *)
+
+(* Apply a valuation to a stage-0 denotation *)
+let a0 = fun (f : (int * (valu * sem)) -> sem) ->
+	let g(x : valu * sem0) : sem0 =
+		let (r, d) = x in
+		match d with
+		| Fn0 phi -> Fn0(fun (d : sem0) -> g(r, phi d))
+		| Bra0 u -> Bra0(f(1, (r, u)))
+		| Num0 _ -> d
+		| Error0 _ -> d
+	in g;
+
+(* Apply a valuation to a stage-s denotation, for s>0 *)
+let apply (x : int * (valu * sem)) : sem =
+	let (s, (r, v)) = x in
+  match v with
+  | VidS x ->
+			(match lookup(x, r) with
+			| Not_found _ -> v
+			| s0 -> Reify s0)
+  | FnS(<<x>>v1) -> FnS(<<x>>(apply(s, (r, v1))))
+  | FunS(<<f>>(<<x>>v1)) -> FunS(<<f>>(<<x>>(apply(s, (r, v1)))))
+  | AppS(v1, v2) -> AppS(apply(s, (r, v1)), apply(s, (r, v2)))
+  | RunS v1 -> RunS(apply(s, (r, v1)))
+  | BraS v1 -> BraS(apply(s + 1, (r, v1)))
+  | EscS v1 -> if s = 1 then Error "apply" else EscS(apply(s-1, (r, v1)))
+  | LetS(v1, <<x1>>v2) -> LetS(apply(s, (r, v1)), <<x1>>(apply(s, (r, v2))))
+  | NumS _ -> v
+  | OpeS(v1, (op, v2)) -> OpeS(apply(s, (r, v1)), (op, apply(s, (r, v2))))
+  | IfzS(v1, (v2, v3)) -> IfzS(apply(s, (r, v1)), ((apply(s, (r, v2)), apply(s, (r, v3)))))
+  | Reify d -> Reify((a0 apply) (r, d));
+
+(* No mutual recursion in Midi-FreshML.
+	 See mut_rec.fml for an explanation of this workaround. *)
+let apply_0 = a0 apply;
+
+(* Now for the reflection functions... *)
+
+(* Given a valuation, reflect a stage-1 denotation to stage-0 *)
+let reflect_0 = fun (f : int * (valu * sem) -> sem) ->
+	let g(x : valu * sem) : sem0 =
+		let (r, v) = x in
+		match v with
+		| VidS x ->
+				(match lookup(x, r) with
+				| Not_found _ -> Error0 "reflect_0:0"
+				| s0 -> s0)
+		| FnS(<<x>>v1) -> Fn0(fun (d : sem0) -> g(Hd((x, d), r), v1))
+		| FunS(<<f>>(<<x>>v1)) ->
+				let phi(d : sem0) : sem0 =
+					g(Hd((f, Fn0 phi), Hd((x, d), r)), v1)
+				in Fn0 phi
+		| AppS(v1, v2) ->
+				(match g(r, v1) with
+				| Fn0 phi -> phi(g(r, v2))
+				| Bra0 _ -> Error0 "reflect_0:1"
+				| Num0 _ -> Error0 "reflect_0:1")
+		| RunS v1 ->
+				(match g(r, v1) with
+				| Fn0 _ -> Error0 "reflect_0:2"
+				| Num0 _ -> Error0 "reflect_0:2"
+				| Bra0 v1' -> g(Nil(), v1'))
+		| BraS v1 -> Bra0(f(1, (r, v1)))
+		| EscS _ -> Error0 "reflect_0:3"
+		| LetS(v1, <<x>>v2) ->
+				let d = g(r, v1) in g(Hd((x, d), r), v2)
+		| NumS n -> Num0 n
+		| OpeS(v1, (op, v2)) ->
+				(match g(r, v1) with
+				| Fn0 _ -> Error0 "reflect_0:4"
+				| Bra0 _ -> Error0 "reflect_0:5"
+				| Num0 m1 ->
+						(match g(r, v2) with 
+						| Fn0 _ -> Error0 "reflect_0:6"
+						| Bra0 _ -> Error0 "reflect_0:7"
+						| Num0 m2 ->
+								(match op with
+								| "+" -> Num0(m1 + m2)
+								| "-" -> Num0(m1 - m2)
+								| "*" -> Num0(m1 * m2)
+								| _ -> Error0 ("reflect_0: " ^ op ^ " not implemented"))))
+		| IfzS(v1, (v2, v3)) ->
+				(match g(r, v1) with
+				| Fn0 _ -> Error0 "reflect_0:8"
+				| Bra0 _ -> Error0 "reflect_0:9"
+				| Num0 m -> if m = 0 then g(r, v2) else g(r, v3))
+		| Reify d -> apply_0(r, d)
+		| Error s -> Error0 s
+	in g;
+
+(* Given a valuation, reflect a stage-(s+1) denotation to stage-s, for s>0 *)
+let reflect(x : int * (valu * sem)) : sem =
+	let (s, (r, v)) = x in
+  match v with
+	| VidS x ->
+			(match lookup(x, r) with
+			| Not_found _ -> v
+			| s0 -> Reify(s0))
+  | FnS(<<x>>v1) -> FnS(<<x>>(reflect(s, (r, v1))))
+  | FunS(<<f>>(<<x>>v1)) -> FunS(<<f>>(<<x>>(reflect(s, (r, v1)))))
+  | AppS(v1, v2) -> AppS(reflect(s, (r, v1)), reflect(s, (r, v2)))
+  | RunS v1 -> RunS(reflect(s, (r, v1)))
+  | BraS v1 -> BraS(reflect(s+1, (r, v1)))
+  | EscS v1 ->
+			if s = 1 then 
+				(match (reflect_0 reflect) (r, v1) with
+				| Fn0 _ -> Error "reflect:0"
+				| Num0 _ -> Error "reflect:1"
+				| Bra0 v1' -> v1'
+				| Error0 s -> Error s)
+			else EscS(reflect(s - 1, (r, v1)))
+  | LetS(v1, <<x>>v2) -> LetS(reflect(s, (r, v1)), <<x>>(reflect(s, (r, v2))))
+  | NumS _ -> v
+  | OpeS(v1, (op, v2)) -> OpeS(reflect(s, (r, v1)), (op, reflect(s, (r, v2))))
+  | IfzS(v1, (v2, v3)) ->
+			IfzS(reflect(s, (r, v1)), (reflect(s, (r, v2)), reflect(s, (r, v3))))
+  | Reify d -> Reify(apply_0(r, d));
+
+let reflect_0 = reflect_0 reflect;
+
+(* Translate a stage-s expression into a stage-(s+1) denotation *)
+let trans(e : exp) : sem =
+  match e with
+  | Vid x -> VidS x
+  | Fn(<<x>>e1) -> FnS(<<x>>(trans e1))
+  | Fun(<<f>>(<<x>>e1)) -> FunS(<<f>>(<<x>>(trans e1)))
+  | App(e1, e2) -> AppS(trans e1, trans e2)
+  | Run e1 -> RunS(trans e1)
+  | Bra e1 -> BraS(trans e1)
+  | Esc e1 -> EscS(trans e1)
+  | Let(e1, <<x>>e2) -> LetS(trans e1, <<x>>(trans e2))
+  | Num m -> NumS m
+  | Ope(e1, (op, e2)) -> OpeS(trans e1, (op, trans e2))
+  | Ifz(e1, (e2, e3)) -> IfzS(trans e1, (trans e2, trans e3));
+
+let den_0(e : exp) : sem0 =
+  (* The interpreter takes a (closed) stage-0 expression and computes
+     its value in sem0 (if any) by first translating it to a stage-1 code
+     and then reflecting that code to stage-0, using the empty valuation *)
+  reflect_0(Nil (), trans e);
+
+(**********
+  Examples
+***********)
+
+let (a, (f, (n, (p, (x, (y, z)))))) =
+	(fresh : var, (fresh : var, (fresh : var,
+		(fresh : var, (fresh : var, (fresh : var, fresh : var))))));
+
+let e0 = 
+  (* run((\x. <x 3>)(\y. y + 4)) *)
+  Run(App(Fn(<<x>>(Bra(App(Vid x, Num 3)))), Fn(<<y>>(Ope(Vid y, ("+", Num 4))))));
+
+(* Should have value Num0 7 *)
+let d7 = den_0 e0;
+
+let e1 =
+  (* run (let z = <\a. ~((\x. <x>)(\y. <a>)) 0> in (run z) 42) *)
+  Run(Let(Bra(Fn(<<a>>(App(Esc(App(Fn(<<x>>(Bra(Vid x))), 
+  Fn(<<y>>(Bra(Vid a))))), Num 0)))), <<z>>(App(Run(Vid z), 
+  Num 42))));
+
+(* Should have value Num0 42 *)
+let d42 = den_0 e1;
+
+let e2 =
+  (* let f = \x. <1 + ~x> in
+     let a = <\y. ~(f <y>)> in (run a) 9 *)
+  Let(Fn(<<x>>(Bra(Ope(Num 1, ("+", Esc(Vid x)))))), 
+  <<f>>(Let(Bra(Fn(<<y>>(Esc(App(Vid f, Bra(Vid y)))))),
+  <<a>>(App(Run(Vid a), Num 9)))));
+
+(* Should have value Num0 10 *)
+let d10 = den_0 e2;
+
+let e3 =
+  (* let f = (fun f x = \y. if x = 0 then <1> else <~y * ~(f(x -1)y)>) in
+     let p = \a. <\z. ~(f a <z>)> in (run(p 3)) 5 *)
+  Let(Fun(<<f>>(<<x>>(Fn(<<y>>(Ifz(Vid x, (Bra(Num 1), Bra(Ope(Esc(Vid
+    y), ("*", Esc(App(App(Vid f, Ope(Vid x, ("-", Num 1))), Vid
+    y)))))))))))), <<f>>(Let(Fn(<<a>>(Bra(Fn(<<z>>(Esc(App(App(Vid f,
+  Vid a), Bra(Vid z)))))))), <<p>>(App(Run(App(Vid p, Num 3)), Num
+    5)))));
+
+(* Should have value Num0 125 *)
+let d125 = den_0 e3;
+
+let e4 =
+  (* (run <\x. ~(run <x>)>) 1 *)
+  App(Run(Bra(Fn(<<x>>(Esc(Run(Bra(Vid x))))))), Num 1);
+
+(* Evaluating this should raise an exception: *)
+den_0 e4;
+
+let e5 =
+  (* (run <\a. ~((\x. <x>) a)>) 0 *)
+  App(Run(Bra(Fn(<<a>>(Esc(App(Fn(<<x>>(Bra(Vid x))), Vid a)))))), Num 0);
+
+(* evaluating this should raise an exception: *)
+den_0 e5;
+
+let e6 =
+  (* fun f n = \x. if n = 0 then x else <let y = n in ~(f(n-1)<y + ~x>)> *)
+  Fun(<<f>>(<<n>>(Fn(<<x>>(Ifz(Vid n, (Vid x, Bra(Let(Vid n,
+  <<y>>(Esc(App(App(Vid f, Ope(Vid n, ("-", Num 1))), Bra(Ope(Vid y,
+  ("+", Esc(Vid x))))))))))))))));
+
+let d6 =
+  (* should have value Num0 6 *)
+  den_0 (Run(App(App(e6, Num 3), Bra(Num 0))));
+
+let diverge =
+  (* (\x. xx)(\x. xx) *)
+  App(Fn(<<x>>(App(Vid x, Vid x))), Fn(<<x>>(App(Vid x, Vid x))));
+
+let e7 =
+  (* (\a.<a>)(\x.diverge) *)
+  App(Fn(<<a>>(Bra(Vid a))), Fn(<<x>>diverge));
+
+(* evaluation of this should not diverge... *)
+den_0 e7;
+
+(* evaluation of this should not terminate... *)
+den_0 (App(Run e7, Num 0));
+

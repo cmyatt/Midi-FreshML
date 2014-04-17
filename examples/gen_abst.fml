@@ -1,0 +1,39 @@
+(* Demonstration of generalised abstraction patterns *)
+name a;
+
+type pair, test where
+  Pair : a * a -> pair,
+	Pair2 : a -> pair,
+  Test : <<pair>>a -> test;
+
+let (x, y) = (fresh : a, fresh : a);
+ 
+let p = Pair(x, y);
+
+let t = Test(<<p>>x);
+
+let b = (match t with | Test <<z>>v -> (z, v));
+
+let z = (fresh : a) in
+(z freshfor (b, z));		(* false *)
+
+let absApply = fun (x : <<int -> int>>int) ->
+	let <<f>>n = x in f n;
+
+absApply <<fun (x : int) -> x + 1>>0;	(* error *)
+
+let e1 = <<Pair(x, y)>>(<<x>>(x));
+
+let e2 = (match e1 with
+| <<Pair t>>u -> (t, u));
+
+let e3 = Test(<<Pair(x, y)>>(x));
+let e4 = Test(<<Pair(y, x)>>(x));
+e3 = e4;	(* false *)
+
+let e5 = Test(<<Pair2 x>>x);
+e5 = e3;	(* false *)
+
+let e7 = Test(<<Pair(y, x)>>y);
+e3 = e7;	(* true *)
+

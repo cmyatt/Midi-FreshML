@@ -1,0 +1,455 @@
+(*********************************************************************
+	
+	nomst.fml
+
+	Prototype implementation of Nominal System T (NST) normalization 
+	function in Midi-FreshML.
+
+	Ported from Fresh OCaml example by A.M.Pitts (2009-06-28).
+
+	Provides:
+	- type exp, NST expressions;
+	- function norm : exp -> exp, normalization function;
+	- examples: capture-avoiding substitution and length.
+
+**********************************************************************)
+
+(* NST types *)
+type typ where
+	Nat : unit -> typ,      (* type of numbers *)
+  Atm : unit -> typ,     	(* type of names *)
+  Trm : unit -> typ,      (* type of object-level lambda-terms*)
+	Fun : typ * typ -> typ,	(* function type *)
+	NotTypeable : unit -> typ;
+
+(* Atoms *)
+name atm;
+
+(* NST variables *)
+name t;
+type var where
+	Vr : t * typ -> var;
+
+let newvar = fun (t : typ) -> Vr(fresh : t, t);
+
+(* NST expressions *)
+type exp where
+	Var : var -> exp,                 (* variable *)
+	Z : unit -> exp,                  (* zero *)
+	S : exp -> exp,                   (* successor *)
+  Nrec : exp * (exp * exp) -> exp,	(* Nat recursion *)
+  Lam : <<var>>exp -> exp,          (* function abstraction *)
+  App : exp * exp -> exp,           (* function application *)
+  At : atm -> exp,                  (* atomic name *)
+(* the following is included to make normal forms a subset of expressions *)
+  New : unit -> exp,             						(* new atomic name *)
+  Nu : <<atm>>exp -> exp,                		(* name restriction *)
+  Eq : exp * (exp * typ) -> exp,           	(* name quality *)
+  Swap : exp * (exp * exp) -> exp,         	(* name swapping *)
+  V : exp -> exp,                        		(* object-level variable *)
+  A : exp * exp -> exp,                 		(* application term *)
+  L : <<atm>>exp -> exp,                 		(* lambda-abstraction term *)
+  Trec : exp * (exp * (exp * exp)) -> exp,	(* Trm recursion *)
+	AssertFailure : string -> exp;
+
+let makeL = fun (x : exp * exp) ->
+	let (e, e') = x in
+  let a = fresh : atm in L(<<a>>(Swap(At a, (e, e'))));
+
+(* Type-checking NST expressions *)
+let typeOf (e : exp) : typ =
+  match e with
+  | Var(Vr(_, y)) -> y
+  | Z _ -> Nat()
+  | S e1 -> if (typeOf e1) = (Nat ()) then Nat() else NotTypeable()
+  | Nrec(e1, (e2, e3)) -> 
+			let t = typeOf e1 in
+			if (typeOf e2) = (Fun(Nat(), (Fun(t, t)))) then
+				(if (typeOf e3) = (Nat ()) then t else NotTypeable())
+			else NotTypeable()
+	| Lam(<<x>>e1) -> Fun(typeOf(Var x), typeOf e1)
+  | App(e1, e2) ->
+			(match typeOf e1 with
+			| Fun(t, t') -> if (typeOf e2) = t then t' else NotTypeable()
+	   	| Nat _ -> NotTypeable()
+			| Atm _ -> NotTypeable()
+			| Trm _ -> NotTypeable())
+  | At a -> Atm()
+  | New _ -> Atm()
+  | Nu(<<a>>e1) -> typeOf e1
+  | Eq(e1, (e2, t)) -> 
+			if (typeOf e1) = (Atm ()) then
+				(if (typeOf e2) = (Atm ()) then Fun(t, Fun(t, t)) else NotTypeable())
+			else NotTypeable()
+  | Swap(e1, (e2, e3)) ->
+			if (typeOf e1) = (Atm ()) then
+				(if (typeOf e2) = (Atm ()) then (typeOf e3) else NotTypeable())
+			else NotTypeable()
+  | V e1 -> if (typeOf e1) = (Atm ()) then Trm() else NotTypeable()
+  | A(e1, e2) ->
+			if (typeOf e1) = (Trm ()) then
+				(if (typeOf e2) = (Trm ()) then Trm() else NotTypeable())
+			else NotTypeable()
+  | L(<<a>>e1) -> if (typeOf e1) = (Trm ()) then Trm() else NotTypeable()
+  | Trec(e1, (e2, (e3, e4))) ->
+			(match typeOf e1 with
+			| Fun(Atm _, t) ->
+					if (typeOf e2) = (Fun(Trm(), Fun(Trm(), Fun(t, Fun(t, t))))) then
+				 		(if (typeOf e3) = (Fun(Atm(), Fun(Trm(), Fun(t, t)))) then 
+				 			(if (typeOf e4) = (Trm()) then t else NotTypeable())
+						else NotTypeable())
+					else NotTypeable()
+			| _ -> NotTypeable());
+
+(* Subsets of normal and neutral forms *)
+let isNormal = fun (f : exp -> bool) ->
+	let g(e : exp) : bool =
+		match e with
+		| Z _ -> true 
+		| S e1 -> g e1
+		| Lam(<<_>>e1) -> g e1
+		| At _ -> true
+		| New _ -> true
+		| V _ -> true
+		| A(e1, e2) -> if (g e1) then (g e2) else false
+		| L(<<a>>e1) -> g e1
+		| _ -> 
+				(match typeOf e with
+				| Fun _ -> false
+				| Nat _ -> f e
+				| Atm _ -> f e
+				| Trm _ -> f e)
+	in g;
+
+let isNeutral(e : exp) : bool =
+	let g = isNormal isNeutral in
+	match e with
+	| Var _ -> true
+  | Nrec(e1, (e2, e3)) -> 
+			if (g e1) then (if (g e2) then (isNeutral e3) else false)
+			else false
+  | App(e1, e2) -> if (isNeutral e1) then (g e2) else false
+  | Eq(e1, (e2, t)) ->
+			if (g e1) then (isNeutral e2)
+			else (if (isNeutral e1) then (g e2) else false)
+  | Nu(<<a>>e1) ->
+			(match typeOf e1 with
+			| Fun _ -> false
+	   	| Nat _ -> isNeutral e1
+			| Atm _ -> isNeutral e1
+			| Trm _ -> isNeutral e1)
+  | Swap(e1, (e2, e3)) ->
+			(match (typeOf e1, typeOf e2) with
+			| (Atm _, Atm _) ->
+					if (g e1) then (if (g e2) then (isNeutral e3) else false)
+					else false
+	    | _ -> false)
+  | Trec(e1, (e2, (e3, e4))) ->
+			if (g e1) then
+				(if (g e2) then
+					(if (g e3) then (isNeutral e4) else false)
+				else false)
+			else false;
+
+let isNormal = isNormal isNeutral;
+
+(* Semantic domain *)
+type sem where
+	Gd : exp -> sem,            (* normal forms of ground type *)
+  Fn : (sem -> sem) -> sem,		(* semantics for higher types *)
+	AssertFailureS : string -> sem;
+
+(* Reification and reflection *)
+let reify = fun (f : typ * exp -> sem) ->
+	let g(x : typ * sem) : exp =
+		let (t, d) = x in
+		match t with
+		| Fun(t1, t2) ->
+				(match d with
+				| Fn h -> 
+						let x = Vr(fresh : t, t1) in
+						let n = g(t2, (h (f(t1, Var x)))) in
+						if (isNormal n) then Lam(<<x>>n) else AssertFailure "reify:0"
+				| Gd _  -> AssertFailure "reify:1")
+		| _ ->
+				(match d with
+				| Gd n ->
+						if (typeOf n) = t then
+							(if (isNormal n) then n else AssertFailure "reify:2")
+						else AssertFailure "reify:3"
+				| Fn _ -> AssertFailure "reify:4")
+	in g;
+
+let reflect(x : typ * exp) : sem =
+	let (t, e) = x in
+  if (isNeutral e) then
+  	(match t with
+		| Fun(t1, t2) -> Fn(fun (d : sem) -> reflect(t2, (App(e, (reify reflect) (t1, d)))))
+    | _ -> Gd e)
+	else AssertFailureS "reflect";
+
+let reify = reify reflect;
+  
+(* Auxiliary semantic functions *)
+
+let at = fun (x : sem * sem) ->
+	let (d1, d2) = x in
+  match d1 with
+  | Gd _ -> AssertFailureS "at"
+  | Fn f -> f d2;
+
+let nu(x : atm * sem) : sem =
+	let (a, d) = x in
+  match d with
+  | Gd(Z _) -> d
+  | Gd(S e) -> 
+			(match nu(a, (Gd e)) with
+			| Gd e' -> Gd(S e')
+	   	| Fn _ -> AssertFailureS "nu:0")
+  | Gd(At a') -> if a = a' then Gd(New()) else d 
+  | Gd(New ()) -> d
+  | Gd(V e) ->
+			(match nu(a, (Gd e)) with
+			| Gd e' -> Gd(V e')
+	   	| Fn _ -> AssertFailureS "nu:1") 
+  | Gd(A(e1, e2)) ->
+			(match (nu(a, (Gd e1)), nu(a, (Gd e2))) with
+			| (Gd e1', Gd e2') -> Gd(A(e1', e2'))
+	   	| _ -> AssertFailureS "nu:2")
+  | Gd(L(<<a'>>e)) ->
+			(match nu(a, (Gd e)) with
+			| Gd e' -> Gd(L(<<a'>>e'))
+	   	| Fn _ -> AssertFailureS "nu:3")
+  | Gd e -> Gd(Nu(<<a>>e))
+  | Fn f -> 
+			Fn(fun (d : sem) ->
+					let a' = fresh : atm in
+		 			nu(a', ((swap (a, a') in f) d)));
+
+let semTrue = Fn(fun (d1 : sem) -> Fn(fun (d2 : sem) -> d1));
+
+let semFalse = Fn(fun (d1 : sem) -> Fn(fun (d2 : sem) -> d2));
+
+let eq(x : typ * (sem * sem)) : sem =
+	let (t, (d1, d2)) = x in
+  match d1 with
+  | Gd(At a) ->
+			(match d2 with
+	    | Gd(At a') -> if a = a' then semTrue else semFalse
+	    | Gd(New _) -> semFalse
+	    | Gd e -> reflect(Fun(t, Fun(t, t)), Eq(At a, (e, t)))
+	    | _ -> AssertFailureS "eq:0")
+  | Gd(New _) ->
+			(match d2 with 
+	    | Gd(At _) -> semFalse
+	    | Gd(New _) -> semTrue
+	   	| Gd e -> reflect(Fun(t, Fun(t, t)), Eq(New(), (e, t)))
+	    | _ -> AssertFailureS "eq:1")
+  | Gd e ->
+			(match d2 with
+	    | Gd e' -> reflect(Fun(t, Fun(t, t)), Eq(e, (e', t)))
+	    | Fn _ -> AssertFailureS "eq:2")
+  | _ -> AssertFailureS "eq:3";
+
+let bi = fun (x : sem * sem) ->
+	let (d1, d2) = x in
+  let sw(d : sem) : sem =
+  	match d with
+		| Gd(Z _) -> d
+    | Gd(S e) -> 
+	  		(match sw(Gd e) with
+	      | Gd e' -> Gd(S e')
+	      | Fn _ -> AssertFailureS "sw:0")
+    | Gd(At _) ->
+				at(at(eq(Atm(), (d1, d)), d2), at(at(eq(Atm(), (d2, d)), d1), d))
+    | Gd(New _) -> d
+    | Gd(V e) ->
+	  		(match sw(Gd e) with
+	      | Gd e' -> Gd(V e')
+	      | Fn _ -> AssertFailureS "sw:1")
+    | Gd(A(e1, e2)) ->
+	  		(match (sw(Gd e1), sw(Gd e2)) with
+	      | (Gd e1', Gd e2') -> Gd(A(e1', e2'))
+	      | _ -> AssertFailureS "sw:2")
+    | Gd(L(<<a>>e)) ->
+	  		(match sw(Gd e) with 
+	      | Gd e' -> Gd(L(<<a>>e'))
+	      | Fn _ -> AssertFailureS "sw:3")
+    | Gd e ->
+	  		(match (d1, d2) with
+	      | (Gd e1, Gd e2) -> Gd(Swap(e1, (e2, e)))
+	      | _ -> AssertFailureS "sw:4")
+    | Fn f -> Fn(fun (d : sem) -> sw(f(sw d)))
+  in sw;
+
+let nrec = fun (x : typ * (sem * sem)) ->
+	let (t, (d1, d2)) = x in
+  let r (d : sem) : sem = 
+		match d with
+    | Gd(Z _) -> d1
+    | Gd(S e) -> at(at(d2, Gd e), r(Gd e))
+    | Gd e -> reflect(t, Nrec(reify(t, d1), (reify(Fun(Nat(), Fun(t, t)), d2), e)))
+    | _ -> AssertFailureS "nrec"
+  in r;
+
+let trec = fun (x : typ * (sem * (sem * sem))) ->
+	let (t, (d1, (d2, d3))) = x in
+  let r(d : sem) : sem =
+		match d with
+		| Gd(V e) -> at(d1, Gd e)
+    | Gd(A(e1, e2)) -> at(at(at(at(d2, Gd e1), Gd e2), r(Gd e1)), r(Gd e2))
+    | Gd(L(<<a>>e)) -> nu(a, at(at(at(d3, Gd(At a)), Gd e), r(Gd e)))
+    | Gd e ->
+				reflect(t, Trec(
+					reify(Fun(Atm(), Trm()), d1),
+					(reify(Fun(Trm(), Fun(Trm(), Fun(t, Fun(t, Fun(t, t))))), d2), 
+		  		(reify(Fun(Atm(), Fun(Trm(), Fun(t, t))), d3), e))))
+    | _ -> AssertFailureS "trec"
+  in r;
+	
+(* Environments *)
+type env where
+	Env : (var -> sem) -> env;
+
+let turnstyle = fun (y : var * sem) ->
+	let (x, d) = y in
+  fun (v : env) ->
+		let Env f = v in
+    Env(fun (x' : var) -> if x' = x then d else f x');
+
+let init = fun (x : var) ->
+	reflect(typeOf(Var x), Var x);
+
+(* Evaluation *)
+let eval (x : exp * env) : sem =
+	let (e, v) = x in
+	let Env(f) = v in
+  let t = typeOf e in
+  match e with
+  | Var x -> f x
+  | Z _ -> Gd(Z())
+  | S e1 ->
+			(match eval(e1, v) with
+	    | Gd e' -> Gd(S e')
+	    | Fn _ -> AssertFailureS "eval:0")
+  | Nrec(e1, (e2, e3)) -> (nrec(t, (eval(e1, v), eval(e2, v)))) (eval(e3, v))
+  | Lam(<<x>>e1) -> Fn(fun (d : sem) -> eval(e1, (turnstyle(x, d)) v))
+  | App(e1, e2) ->
+			(match eval(e1, v) with 
+	   	| Fn f -> f(eval(e2, v))
+	 		| Gd _ -> AssertFailureS "eval:1")
+  | At a -> Gd e
+  | New _ -> Gd(New())
+  | Nu(<<a>>e1) -> nu(a, eval(e1, v))
+  | Eq(e1, (e2, t')) -> eq(t', (eval(e1, v), eval(e2, v)))
+  | Swap(e1, (e2, e3)) -> (bi(eval(e1, v), eval(e2, v))) (eval(e3, v))
+  | V e1 -> 
+			(match eval(e1, v) with 
+	   	| Gd e' -> Gd(V e')
+	 		| Fn _ -> AssertFailureS "eval:2")
+  | A(e1, e2) ->
+			(match (eval(e1, v), eval(e2, v)) with 
+	   	| (Gd e1', Gd e2') -> Gd(A(e1', e2'))
+			|  _ -> AssertFailureS "eval:3")
+  | L(<<a>>e1) ->
+			(match eval(e1, v) with
+	   	| Gd e' -> Gd(L(<<a>>e'))
+	 		| Fn _ -> AssertFailureS "eval:4")
+  | Trec(e1, (e2, (e3, e4))) -> 
+			(trec(t, (eval(e1, v), (eval(e2, v), eval(e3, v))))) (eval(e4, v));
+
+(* Normalization *)
+let norm = fun (e : exp) ->
+	let t = typeOf e in reify(t, eval(e, Env init));
+
+(*********************************************************************
+Examples 
+*********************************************************************)
+
+let x = newvar(Atm());
+let y = newvar(Trm());
+let z = newvar(Trm());
+let x1 = newvar(Atm());
+let y1 = newvar(Trm());
+let y2 = newvar(Trm());
+let z1 = newvar(Trm());
+let z2 = newvar(Trm());
+let (a, a') = (fresh : atm, fresh : atm);
+
+let e1 = 
+  (*  "\x1. (x = x1)_Trm y (V x1)" *)
+  Lam(<<x1>>(App(App(Eq(Var x, (Var x1, Trm())), Var y), V(Var x1))));
+
+let e2 =
+(* "\y1.\y2.\z1.\z2. A z1 z2" *)
+  Lam(<<y1>>(Lam(<<y2>>(Lam(<<z1>>(Lam(<<z2>>(A(Var z1, Var z2)))))))));
+
+let e3 =
+(* "\x1.\y1.\z1.La.(a x1)*z1" *)
+  Lam(<<x1>>(Lam(<<y1>>(Lam(<<z1>>(makeL(Var x1, Var z1)))))));
+
+(* Capture-avoiding substitution *)
+let sub =
+  (* "\x.\y.\z.trec e1 e2 e3 z" *)
+  Lam(<<x>>(Lam(<<y>>(Lam(<<z>>(Trec(e1, (e2, (e3, Var z)))))))));
+
+let testTypeOfSub =
+  ((typeOf sub) = (Fun(Atm(), Fun(Trm(), Fun(Trm(), Trm()))))); (* true *)
+
+let subEg =
+  (* "sub a' (V a) (La. V a')" *)
+  App(App(App(sub, At a'), V(At a)), L(<<a>>(V(At a'))));
+
+let subEgN =
+  (* "La'. V a" *)  
+  L(<<a'>>(V(At a)));
+
+let testNormEg =
+  ((norm subEg) = subEgN); (* true *)    
+
+(* Addition *)
+let plus =
+  (* "\n.\m.nrec n (\n.\m.S m) m" *)
+  let n = newvar(Nat()) in
+  let m = newvar(Nat()) in
+    Lam(<<n>>
+	  (Lam(<<m>>
+		 (Nrec(Var n,
+		       (Lam(<<n>>(Lam(<<m>>(S(Var m))))), 
+		       Var m))))));
+
+(* One plus one equals two *)
+let plusTest =
+  ((norm(App(App(plus, S(Z())), S(Z())))) = (S(S(Z())))); (* true *)
+
+(* Length of a lambda-term *)
+let len =
+  (* "\x.trec (\x1.S 0)(\y.\z.\n.\m.plus n m)(\x1.\y.\n.S n) x" *)
+  let x = newvar(Trm()) in
+  let x1 = newvar(Atm()) in
+  let y = newvar(Trm()) in
+  let z = newvar(Trm()) in
+  let n = newvar(Nat()) in
+  let m = newvar(Nat()) in
+    Lam(<<x>>
+	  (Trec(
+			Lam(<<x1>>(S(Z()))), 
+			(Lam(<<y>>
+		      (Lam(<<z>>
+			     (Lam(<<n>>
+				    (Lam(<<m>>
+					   (App(App(plus, Var n), 
+						Var m))))))))),
+			(Lam(<<x1>>(Lam(<<y>>(Lam(<<n>>(S(Var n))))))),
+			Var x)))));
+
+let testTypeOfLen =
+  ((typeOf len) = (Fun(Trm(), Nat()))); (* true *)
+
+let lenEg =
+  (* "len(La. va)" *)
+  App(len, L(<<a>>(V(At a))));
+
+let testLenEg =
+  ((norm lenEg) = S(S(Z()))); (* true *)
+

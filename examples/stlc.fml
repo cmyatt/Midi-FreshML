@@ -1,0 +1,51 @@
+(*********************************************************************
+
+	stlc.ml
+
+	Type-checking simple typed lambda calculus as an example of using 
+	general abstraction types in Fresh O'Caml.
+
+	Ported from Fresh OCaml example by A.M.Pitts
+
+**********************************************************************)
+
+name vid;
+
+type expr, typ where
+	Vid : vid -> expr,
+  Fn : <<vid * typ>>expr -> expr,	(* N.B. this type for Fn only makes sense because typ is "pure" *)
+  App : expr * expr -> expr,
+  Ground : string -> typ,
+  Fun : typ * typ -> typ,
+	NotTypeable : unit -> typ;
+
+type vt_list where
+	Nil : unit -> vt_list,
+	Hd : (vid * typ) * vt_list -> vt_list;
+
+(* typeOf : <<(vid * typ) list>>expr -> typ *)
+let typeOf (config : <<vt_list>>expr) : typ =
+  match config with
+  | <<Nil _>>(Vid x) -> NotTypeable ()
+  | <<Hd((x, t), tyenv)>>(Vid y) -> 
+			if x = y then t 
+			else typeOf (<<tyenv>>(Vid y))
+  | <<tyenv>>(Fn(<<(x, t)>>e)) -> Fun(t, typeOf (<<Hd((x, t), tyenv)>>e))
+  | <<tyenv>>(App(e1, e2)) ->
+			(match typeOf (<<tyenv>>e1) with
+			| Fun(t1, t2) -> 
+					if (typeOf(<<tyenv>>e2)) = t1 then t2
+					else NotTypeable ())
+ | _ -> NotTypeable ();
+
+(* Example *)
+let nat = Ground "nat";
+
+let natfun = Fun(nat, nat);
+
+let (x, f) = (fresh : vid, fresh : vid);
+
+let eval = Fn(<<(f, natfun)>>(Fn(<<(x, nat)>>(App(Vid f, Vid x)))));
+
+typeOf (<<Nil ()>>eval);
+

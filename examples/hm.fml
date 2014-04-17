@@ -1,0 +1,312 @@
+(*********************************************************************
+
+	hm.fml
+
+	A naive implementation of Hindley-Milner type inference
+	for a mini ML.
+
+	Ported from Fresh OCaml example by A.M.Pitts (2003).
+
+**********************************************************************)
+
+name tyvar;	(* type variables, a *)
+
+(* types, t *)
+type ty where
+	Tyvar : tyvar -> ty,  (* a *)
+  Bool : unit -> ty,    (* bool *)
+  List : ty -> ty,      (* ty list *)
+  Fun : ty * ty -> ty,	(* t1 -> t2 *)
+	Not_found : unit -> ty;
+
+name vid;	(* value identifiers, x *)
+
+(* expressions, e *)
+type expr where
+	Vid : vid -> expr,																(* x *)
+  True : unit -> expr,                            	(* true *)
+  False : unit -> expr,                           	(* false *)
+  If : expr * (expr * expr) -> expr,        				(* if e1 then e2 else e3 *)
+  Nil : unit -> expr,                             	(* nil *)
+  Cons : expr * expr -> expr,            						(* e1 :: e2 *)
+  Case : expr * (expr * <<vid * vid>>expr) -> expr,	(* case e1 of nil -> e2 | x1::x2 -> e3 *)
+  Fn : <<vid>>expr -> expr,               					(* fn x => e *)
+  App : expr * expr -> expr,              					(* e1 e2 *)
+  Let : expr * <<vid>>expr -> expr;     						(* let x = e1 in e2 end *)    
+
+type tyvar_list where
+	RNil : unit -> tyvar_list,
+	RHd : tyvar * tyvar_list -> tyvar_list;
+
+let aappend(x : tyvar_list * tyvar_list) : tyvar_list =
+	let (xs, ys) = x in
+	match xs with
+	| RNil _ -> ys
+	| RHd(z, zs) -> RHd(z, aappend(zs, ys));
+
+let afilter(x : (tyvar -> bool) * tyvar_list) : tyvar_list =
+	let (f, xs) = x in
+	match xs with
+	| RNil _ -> RNil()
+	| RHd(y, ys) -> if (f y) then RHd(y, afilter(f, ys)) else afilter(f, ys);
+
+(* type schemes *)
+type tysc where
+	TySc : <<tyvar_list>>ty -> tysc,	(* All a1,...,an.ty *)
+	NotTypeable : unit -> tysc,
+	FailT : unit -> tysc;
+
+type vid_tysc_list where
+	VNil : unit -> vid_tysc_list,
+	VHd : (vid * tysc) * vid_tysc_list -> vid_tysc_list;
+
+let vmap(x : ((vid * tysc) -> (vid * tysc)) * vid_tysc_list) : vid_tysc_list =
+	let (f, xs) = x in
+	match xs with
+	| VNil _ -> VNil()
+	| VHd(y, ys) -> VHd(f y, vmap(f, ys));
+
+let vlookup(x : vid * vid_tysc_list) : tysc =
+	let (v, xs) = x in
+	match xs with
+	| VNil _ -> NotTypeable()
+	| VHd((v', t), ys) -> if v = v' then t else vlookup(v, ys);
+
+(* typing environments *)
+type tyenv where
+	TyEnv : vid_tysc_list -> tyenv;
+
+type tyvar_ty_list where
+	TNil : unit -> tyvar_ty_list,
+	THd : (tyvar * ty) * tyvar_ty_list -> tyvar_ty_list;
+
+type ty_ty_list where
+	YNil : unit -> ty_ty_list,
+	YHd : (ty * ty) * ty_ty_list -> ty_ty_list;
+
+let ymap(x : ((ty * ty) -> (ty * ty)) * ty_ty_list) : ty_ty_list =
+	let (f, xs) = x in
+	match xs with
+	| YNil _ -> YNil()
+	| YHd(y, ys) -> YHd(f y, ymap(f, ys));
+
+let tlookup(x : tyvar * tyvar_ty_list) : ty =
+	let (a, xs) = x in
+	match xs with
+	| TNil _ -> Not_found()
+	| THd((a', t), ys) -> if a = a' then t else tlookup(a, ys);
+
+(* type substitutions, s *)
+type sub where
+	Sub : tyvar_ty_list -> sub,
+	Fail : unit -> sub;
+
+let tmap(x : ((tyvar * ty) -> (tyvar * ty)) * tyvar_ty_list) : tyvar_ty_list =
+	let (f, xs) = x in
+	match xs with
+	| TNil _ -> TNil()
+	| THd(y, ys) -> THd(f y, tmap(f, ys));
+
+let tmem(x : tyvar * tyvar_ty_list) : bool =
+	let (t, xs) = x in
+	match xs with
+	| TNil _ -> false
+	| THd((t', _), ys) -> if t = t' then true else tmem(t, ys);
+
+let tfilter(x : ((tyvar * ty) -> bool) * tyvar_ty_list) : tyvar_ty_list =
+	let (f, xs) = x in
+	match xs with
+	| TNil _ -> TNil()
+	| THd(y, ys) -> if (f y) then THd(y, tfilter(f, ys)) else tfilter(f, ys);
+
+let tappend(x : tyvar_ty_list * tyvar_ty_list) : tyvar_ty_list =
+	let (xs, ys) = x in
+	match xs with
+	| TNil _ -> ys
+	| THd(z, zs) -> THd(z, tappend(zs, ys));
+
+(* Substitute a type for a type variable in a type *)
+let subst = fun (x : ty * tyvar) ->
+	let (t, a) = x in
+  let sub(t' : ty) : ty = 
+  	match t' with
+		| Tyvar b -> if a = b then t else Tyvar b
+    | Bool _ -> Bool()
+    | List t1 -> List(sub t1)
+    | Fun(t1, t2) -> Fun(sub t1, sub t2)
+  in sub;
+
+(* Apply a type substitution to a type *)			
+let apply(x : sub * ty) : ty =
+	let (s', t) = x in
+	match s' with
+	| Sub s ->
+			(match t with
+			| Tyvar a ->
+					let t1 = tlookup(a, s) in
+					(match t1 with
+					| Not_found _ -> Tyvar a
+					| _ -> t1)
+			| Bool _ -> Bool()
+			| List t1 -> List(apply(Sub s, t1))
+			| Fun(t1, t2) -> Fun(apply(Sub s, t1), apply(Sub s, t2))
+			| Not_found _ -> t)
+	| _ -> Not_found();
+
+(* Compose type substitutions, right-to-left, i.e. should have
+   apply (compose s1 s2) t = apply s1 (apply s2 t) *)
+let compose = fun (x : sub * sub) ->
+	let (Sub s1, Sub s2) = x in
+  (* if s2 associates t with a, apply s1 to t *)
+	let g = fun (x : tyvar * ty) ->
+		let (a, t) = x in (a, apply(Sub s1, t))
+	in
+  (* if a is not in the domain of s2, but is in the
+		 domain of s1, then use s1 *)
+	let f = fun (x : tyvar * ty) ->
+		let (a, t) = x in
+		if (tmem(a, s2)) then false else true
+	in
+	Sub(tappend(tmap(g, s2), tfilter(f, s1)));
+
+(* Apply a type substitution to a typing environment *)
+let apply_env = fun (x : sub * tyenv) ->
+	let (s, TyEnv(env)) = x in
+	let f = fun (y : vid * tysc) ->
+		let (x, TySc(<<aa>>t)) = y in
+		(x, TySc(<<aa>>(apply(s, t))))
+	in TyEnv(vmap(f, env));
+
+(* Calculate the most general unifier of two types, 
+   raising Fail if there is not one *)
+let mgu = fun (t1 : ty) ->
+  let unify(y : ty_ty_list * sub) : sub =
+		let (prob, s) = y in
+		let Sub(s') = s in
+		let f = fun (z : tyvar * ty) ->
+			let (a, t) = z in
+			fun (x : ty * ty) ->
+				let (t1, t2) = x in ((subst(t, a)) t1, (subst(t, a)) t2)
+		in
+    match prob with
+		| YNil _ -> s
+    | YHd((Tyvar a, t), rest) ->
+				if (a freshfor t) then 
+	    		(let rest' = ymap(f(a, t), rest) in unify(rest', Sub(THd((a, t), s'))))
+				else (if t = (Tyvar a) then unify(rest, s) else Fail())
+    | YHd((t, Tyvar a), rest) ->
+				if (a freshfor t) then 
+					(let rest' = ymap(f(a, t), rest) in unify(rest', Sub(THd((a, t), s'))))
+				else Fail()
+    | YHd((Bool _, Bool _), rest) -> unify(rest, s)
+    | YHd((List t1, List t2), rest) -> unify(YHd((t1, t2), rest), s)
+    | YHd((Fun(t1, t1'), Fun(t2, t2')), rest) ->
+				unify(YHd((t1, t2), YHd((t1', t2'), rest)), s)
+    | _ -> Fail()
+  in
+	fun (t2 : ty) -> unify(YHd((t1, t2), YNil()), Sub(TNil()));
+
+(* Calculate the list of type variables occurring in a type,
+   without repeats *)
+let tv(t : ty) : tyvar_list =
+  match t with
+	| Tyvar a -> RHd(a, RNil())
+  | Bool _ -> RNil()
+  | List t -> tv t
+  | Fun(t1, t2) -> 
+			let aa = tv t1 in
+			aappend(aa, afilter(fun (a : tyvar) -> a freshfor aa, tv t2));
+
+(* Calculate the principal type scheme for an expression in a given 
+   typing environment *)
+let pts = fun (x : tyenv * expr) ->
+	let (env, e) = x in
+  let pt(y : tyenv * expr) : sub * ty =
+		let (TyEnv(env), e) = y in
+    match e with
+		| Vid x -> 
+				(match vlookup(x, env) with
+				| TySc(<<_>>t) -> (Sub(TNil()), t)
+				| NotTypeable _ -> (Fail(), Not_found()))
+    | True _ -> (Sub(TNil()), Bool())
+    | False _ -> (Sub(TNil()), Bool())
+    | If(e1, (e2, e3)) ->
+				let (s1, t1) = pt(TyEnv env, e1) in
+				let s2 = (mgu t1) Bool() in
+				if (s2 = Fail()) then (Fail(), Not_found())
+				else
+					(let s21 = compose(s2, s1) in
+					let (s3, t3) = pt(apply_env(s21, TyEnv env), e2) in
+					let s4 = (mgu(apply(compose(s3, s2), t1))) t3 in
+					if (s4 = Fail()) then (Fail(), Not_found())
+					else (compose(s4, compose(s3, s21)), apply(s4, t3)))
+    | Nil _ -> (Sub(TNil()), List(Tyvar (fresh : tyvar)))
+    | Cons(e1, e2) ->
+				let (s1, t1) = pt(TyEnv env, e1) in
+				let (s2, t2) = pt(apply_env(s1, TyEnv env), e2) in
+				let s3 = (mgu(List(apply(s2, t1)))) t2 in
+				if (s3 = Fail()) then (Fail(), Not_found())
+				else (compose(s3, compose(s2, s1)), apply(s3, t2))
+    | Case(e1, (e2, <<(x1, x2)>>e3)) ->
+				let (s1, t1) = pt(TyEnv env, e1) in
+				let TyEnv env1 = apply_env(s1, TyEnv env) in	  
+				let a = fresh : tyvar in
+				let s2 = (mgu t1) List(Tyvar a) in
+				if (s2 = Fail()) then (Fail(), Not_found())
+				else
+					(let (s3, t3) = pt(apply_env(s2, TyEnv env1), e2) in
+					let s32 = compose(s3, s2) in
+					let TyEnv env2 = apply_env(s32, TyEnv env1) in
+					let (s4, t4) = pt(
+						TyEnv(VHd((x1, TySc(<<RNil()>>(apply(s32, Tyvar a)))),
+						VHd((x2, TySc(<<RNil()>>(apply(s32, t1)))), env2))), e3)
+					in
+					let s5 = (mgu t4) (apply(s4, t3)) in
+					if (s5 = Fail()) then (Fail(), Not_found())
+					else (compose(s5, compose(s4, compose(s32, s1))), apply(s5, t4)))
+    | Fn(<<x>>e1) ->
+				let a = fresh : tyvar in
+				let (s1, t1) = pt(TyEnv(VHd((x, TySc(<<RNil()>>(Tyvar a))), env)), e1) in
+				(s1, Fun(apply(s1, Tyvar a), t1))
+    | App(e1, e2) -> 
+				let (s1, t1) = pt(TyEnv env, e1) in
+				let (s2, t2) = pt(apply_env(s1, TyEnv env), e2) in
+				let a = fresh : tyvar in
+				let s3 = (mgu(apply(s2, t1))) Fun(t2, Tyvar a) in
+				if (s3 = Fail()) then (Fail(), Not_found())
+				else (compose(s3, compose(s2, s1)), apply(s3, Tyvar a))
+    | Let(e1, <<x>>e2) ->
+				let (s1, t1) = pt(TyEnv env, e1) in
+				let TyEnv env1 = apply_env(s1, TyEnv env) in
+				let aa = afilter(fun (a : tyvar) -> a freshfor env1, tv t1) in
+				let (s2, t2) = pt(TyEnv(VHd((x, TySc(<<aa>>t1)), env1)), e2) in
+				(compose(s2, s1), t2)
+	in
+	let (s, t) = pt(env, e) in
+	if (s = Fail) then FailT else
+  	TySc(<<afilter(fun (a : tyvar) -> a freshfor (apply_env(s, env)), tv t)>>t);
+
+(********************************************************************
+  Examples 
+********************************************************************)
+
+let (x, (y, f)) = (fresh : vid, (fresh : vid, fresh : vid));
+
+let id = Fn(<<x>>(Vid x));
+
+pts(TyEnv(VNil()), id);
+
+let snd = Fn(<<x>>(Fn(<<y>>(Vid x))));
+
+pts(TyEnv(VNil()), snd);
+
+let e1 = Let(snd, <<f>>(App(Vid f, Vid f)));
+
+pts(TyEnv(VNil()), e1);
+
+(* (\f.f f) snd *)
+let e2 = App(Fn(<<f>>(App(Vid f, Vid f))), snd);
+
+(* Expect error since (\f : a'.f f) is untypeable *)
+pts(TyEnv(VNil()), e2);
+
